@@ -1,0 +1,511 @@
+/*
+ * SPDX-FileCopyrightText: 2015 Aleix Pol Gonzalez <aleixpol@kde.org>
+ *
+ * SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+ */
+
+import QtQuick
+import QtCore
+import QtQuick.Controls as QQC2
+import QtQuick.Layouts
+import QtQuick.Dialogs
+import QtQml.Models
+import org.kde.kirigami as Kirigami
+import org.kde.kdeconnect
+
+Kirigami.ScrollablePage {
+    id: root
+    property QtObject currentDevice
+    title: currentDevice.name
+
+    BatteryInfo {
+        id: batteryInfo
+        device: root.currentDevice
+    }
+
+    NotificationsModel {
+        id: deviceNotificationsModel
+        deviceId: (root.currentDevice && root.currentDevice.isPaired && root.currentDevice.isReachable) ? root.currentDevice.id() : ""
+    }
+
+    ConnectivityInfo {
+        id: connectivityInfo
+        device: root.currentDevice
+    }
+
+    function openSettings()
+    {
+        for (let index = 0; index < pageStack.depth; ++index) {
+            const page = pageStack.get(index);
+            if (page.isPluginSettingsPage && page.device === currentDevice.id()) {
+                pageStack.currentIndex = index;
+                return page;
+            }
+        }
+
+        return pageStack.push(
+            Qt.resolvedUrl("PluginSettings.qml"),
+            {device: currentDevice.id()}
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Status header card: shows device icon, connection status, battery, and
+    // network signal. All values come from real D-Bus interfaces; nothing is
+    // fabricated. The header is purely presentational and does not affect any
+    // existing plugin, pairing, or protocol behavior.
+    // -------------------------------------------------------------------------
+    header: QQC2.Control {
+        visible: root.currentDevice !== null
+        topPadding: Kirigami.Units.largeSpacing
+        bottomPadding: Kirigami.Units.largeSpacing
+        leftPadding: Kirigami.Units.largeSpacing
+        rightPadding: Kirigami.Units.largeSpacing
+
+        background: Rectangle {
+            Kirigami.Theme.colorSet: Kirigami.Theme.Window
+            Kirigami.Theme.inherit: false
+            color: Kirigami.Theme.backgroundColor
+
+            Kirigami.Separator {
+                anchors {
+                    left: parent.left
+                    bottom: parent.bottom
+                    right: parent.right
+                }
+            }
+        }
+
+        contentItem: RowLayout {
+            id: headerContent
+            spacing: Kirigami.Units.largeSpacing
+
+            Kirigami.Icon {
+                source: root.currentDevice ? root.currentDevice.iconName : ""
+                implicitWidth: Kirigami.Units.iconSizes.large
+                implicitHeight: Kirigami.Units.iconSizes.large
+                Layout.alignment: Qt.AlignVCenter
+            }
+
+            ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+
+                // Connection status badge
+                RowLayout {
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Rectangle {
+                        implicitWidth: Kirigami.Units.smallSpacing * 2
+                        implicitHeight: Kirigami.Units.smallSpacing * 2
+                        radius: width / 2
+                        Layout.alignment: Qt.AlignVCenter
+                        Accessible.ignored: true
+                        color: {
+                            if (!root.currentDevice) {
+                                return Kirigami.Theme.disabledTextColor;
+                            }
+                            if (root.currentDevice.isPaired && root.currentDevice.isReachable) {
+                                return Kirigami.Theme.positiveTextColor;
+                            } else if (!root.currentDevice.isPaired && root.currentDevice.isReachable) {
+                                return Kirigami.Theme.neutralTextColor;
+                            }
+                            return Kirigami.Theme.disabledTextColor;
+                        }
+                    }
+
+                    QQC2.Label {
+                        font: Kirigami.Theme.smallFont
+                        text: {
+                            if (!root.currentDevice) {
+                                return "";
+                            }
+                            const p = root.currentDevice.isPaired;
+                            const r = root.currentDevice.isReachable;
+                            if (p && r) {
+                                return i18nc("@info device status", "Connected");
+                            } else if (p && !r) {
+                                return i18nc("@info device status", "Remembered - not reachable");
+                            } else if (!p && r) {
+                                return i18nc("@info device status", "Available - not paired");
+                            }
+                            return i18nc("@info device status", "Unavailable");
+                        }
+                        color: {
+                            if (!root.currentDevice) {
+                                return Kirigami.Theme.disabledTextColor;
+                            }
+                            const p = root.currentDevice.isPaired;
+                            const r = root.currentDevice.isReachable;
+                            if (p && r) {
+                                return Kirigami.Theme.positiveTextColor;
+                            } else if (!p && r) {
+                                return Kirigami.Theme.neutralTextColor;
+                            }
+                            return Kirigami.Theme.disabledTextColor;
+                        }
+                    }
+                }
+
+                // Chip row: battery + network signal (shown only when available)
+                RowLayout {
+                    spacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+
+                    // Battery chip
+                    RowLayout {
+                        visible: batteryInfo.hasBattery
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Icon {
+                            source: batteryInfo.iconName
+                            implicitWidth: Kirigami.Units.iconSizes.small
+                            implicitHeight: Kirigami.Units.iconSizes.small
+                            Layout.alignment: Qt.AlignVCenter
+                            Accessible.ignored: true
+                        }
+
+                        QQC2.Label {
+                            font: Kirigami.Theme.smallFont
+                            // displayString is already i18n-formatted by BatteryInfo.qml
+                            text: batteryInfo.displayString
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                    }
+
+                    // Network signal chip
+                    RowLayout {
+                        visible: connectivityInfo.available
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Icon {
+                            source: connectivityInfo.iconName
+                            implicitWidth: Kirigami.Units.iconSizes.small
+                            implicitHeight: Kirigami.Units.iconSizes.small
+                            Layout.alignment: Qt.AlignVCenter
+                            Accessible.ignored: true
+                        }
+
+                        QQC2.Label {
+                            font: Kirigami.Theme.smallFont
+                            text: connectivityInfo.displayString
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+            }
+        }
+    }
+
+    actions: [
+        Kirigami.Action {
+            icon.name: "network-disconnect"
+            onTriggered: {
+                root.currentDevice.unpair()
+                pageStack.pop(0)
+            }
+            text: i18nd("kdeconnect-app", "Unpair")
+            visible: root.currentDevice && root.currentDevice.isPaired
+        },
+        Kirigami.Action {
+            icon.name: "hands-free"
+            text: i18nd("kdeconnect-app", "Send Ping")
+            visible: root.currentDevice && root.currentDevice.isPaired && root.currentDevice.isReachable
+            onTriggered: {
+                root.currentDevice.pluginCall("ping", "sendPing");
+            }
+        },
+        Kirigami.Action {
+            icon.name: "settings-configure"
+            text: i18n("Plugin Settings")
+            visible: root.currentDevice && root.currentDevice.isPaired && root.currentDevice.isReachable
+            onTriggered: {
+                root.openSettings();
+            }
+        }
+    ]
+
+    ListView {
+        id: pluginsListView
+
+        section.property: "section"
+        section.delegate: Kirigami.ListSectionHeader {
+            width: ListView.view.width
+            text: switch (section) {
+                case "action":
+                    return i18nc("@title:group device page section header", "Actions");
+                case "control":
+                    return i18nc("@title:group device page section header", "Controls");
+                case "info":
+                    return i18nc("@title:group device page section header", "Information");
+            }
+        }
+        Accessible.role: Accessible.List
+
+        model: DelegateModel{
+            id: pluginModel
+            model: pluginsListView.plugins
+            groups: [
+                DelegateModelGroup {name: "loadedPlugins"}
+            ]
+            filterOnGroup: "loadedPlugins"
+            property int numberPluginsLoaded: pluginsListView.plugins.filter(plugin => !plugin.hidden && (plugin.loaded || plugin.section === "info")).length ?? 0
+            onNumberPluginsLoadedChanged: update()
+
+            function update() {
+                for (let i = 0; i < items.count; ++i) {
+                    let item = items.get(i);
+                    item.inLoadedPlugins = !item.model.hidden && (item.model.loaded || (item.model.section === "info" && root.currentDevice.isPaired))
+                }
+            }
+
+            delegate: QQC2.ItemDelegate {
+                id: pluginDelegate
+                text: Kirigami.MnemonicData.richTextLabel
+                Accessible.name: Kirigami.MnemonicData.plainTextLabel ?? modelData.name // fallback needed for KF < 6.12
+                Accessible.role: modelData.clickable ? Accessible.Button : Accessible.StaticText
+                icon.name: modelData.iconName
+                highlighted: modelData === sharePlugin && dropArea.containsDrag
+                icon.color: "transparent"
+                width: pluginsListView.width
+                enabled: true
+                hoverEnabled: modelData.clickable
+                focusPolicy: modelData.clickable ? Qt.StrongFocus : Qt.NoFocus
+                onClicked: {
+                    if (modelData.clickable) {
+                        modelData.onClick()
+                    }
+                }
+
+                Kirigami.MnemonicData.enabled: modelData.clickable && visible
+                Kirigami.MnemonicData.controlType: Kirigami.MnemonicData.MenuItem
+                Kirigami.MnemonicData.label: modelData.name
+
+                Shortcut {
+                    sequence: pluginDelegate.Kirigami.MnemonicData.sequence
+                    onActivated: clicked()
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    visible: !modelData.clickable
+                    enabled: visible
+                    acceptedButtons: Qt.AllButtons
+                    hoverEnabled: true
+                    preventStealing: true
+                }
+            }
+        }
+
+        property list<QtObject> plugins: [
+            PluginItem {
+                name: i18nd("kdeconnect-app", "Multimedia control")
+                interfaceFactory: MprisDbusInterfaceFactory
+                component: "mpris.qml"
+                pluginName: "mprisremote"
+                section: "control"
+                device: root.currentDevice
+            },
+            PluginItem {
+                name: deviceNotificationsModel.count > 0
+                    ? i18nd("kdeconnect-app", "Notifications (%1)", deviceNotificationsModel.count)
+                    : i18nd("kdeconnect-app", "Notifications")
+                interfaceFactory: DeviceNotificationsDbusInterfaceFactory
+                component: "NotificationPanel.qml"
+                pluginName: "notifications"
+                section: "control"
+                device: root.currentDevice
+            },
+            PluginItem {
+                name: i18nd("kdeconnect-app", "Remote input")
+                interfaceFactory: RemoteControlDbusInterfaceFactory
+                component: "mousepad.qml"
+                pluginName: "remotecontrol"
+                section: "control"
+                device: root.currentDevice
+            },
+            PluginItem {
+                name: i18nd("kdeconnect-app", "Run command")
+                interfaceFactory: RemoteCommandsDbusInterfaceFactory
+                component: "runcommand.qml"
+                pluginName: "remotecommands"
+                section: "control"
+                device: root.currentDevice
+            },
+            PluginItem {
+                name: i18nd("kdeconnect-app", "Presentation Remote")
+                interfaceFactory: RemoteKeyboardDbusInterfaceFactory
+                component: "presentationRemote.qml"
+                pluginName: "remotecontrol"
+                section: "control"
+                device: root.currentDevice
+                hidden: root.currentDevice.type === "phone" || root.currentDevice.type === "tablet"
+            },
+            PluginItem {
+                name: i18nd("kdeconnect-app", "Volume control")
+                interfaceFactory: RemoteSystemVolumeDbusInterfaceFactory
+                component: "volume.qml"
+                pluginName: "remotesystemvolume"
+                section: "control"
+                device: root.currentDevice
+            },
+            PluginItem {
+                readonly property QtObject sms: SmsDbusInterfaceFactory.create(root.currentDevice.id())
+                pluginName: "sms"
+                name: i18n("SMS Messages")
+                onClick: () => sms.launchApp();
+                section: "control"
+                device: root.currentDevice
+            },
+            PluginItem {
+                readonly property var lockIface: LockDeviceDbusInterfaceFactory.create(root.currentDevice.id())
+                pluginName: "lockdevice"
+                name: lockIface.isLocked ? i18nd("kdeconnect-app", "Unlock") : i18nd("kdeconnect-app", "Lock")
+                onClick: () => lockIface.isLocked = !lockIface.isLocked;
+                section: "action"
+                device: root.currentDevice
+            },
+            PluginItem {
+                readonly property var findmyphoneIface: FindMyPhoneDbusInterfaceFactory.create(root.currentDevice.id())
+                pluginName: "findmyphone"
+                name: i18nd("kdeconnect-app", "Find Device")
+                section: "action"
+                onClick: () => findmyphoneIface.ring()
+                device: root.currentDevice
+            },
+            PluginItem {
+                readonly property var clipboardIface: ClipboardDbusInterfaceFactory.create(root.currentDevice.id())
+                pluginName: "clipboard"
+                name: i18nd("kdeconnect-app", "Send Clipboard")
+                onClick: () => clipboardIface.sendClipboard()
+                section: "action"
+                device: root.currentDevice
+            },
+            PluginItem {
+                id: sharePlugin
+                pluginName: "share"
+                name: i18nd("kdeconnect-app", "Share File")
+                onClick: () => fileDialog.open()
+                section: "action"
+                device: root.currentDevice
+            },
+            PluginItem {
+                readonly property QtObject sftp: SftpDbusInterfaceFactory.create(root.currentDevice.id())
+                pluginName: "sftp"
+                name: i18n("Browse this device")
+                onClick: () => sftp.startBrowsing();
+                section: "action"
+                device: root.currentDevice
+            },
+            PluginItem {
+                readonly property QtObject virtualMonitor: VirtualmonitorDbusInterfaceFactory.create(root.currentDevice.id())
+                pluginName: "virtualmonitor"
+                name: virtualMonitor.active ? i18n("Stop virtual monitor session") : i18n("Use device as an external monitor")
+                onClick: () => {
+                    if (virtualMonitor.active) {
+                        virtualMonitor.stop();
+                    } else {
+                        virtualMonitor.requestVirtualMonitor();
+                        if (virtualMonitor.lastError.length > 0) {
+                            showPassiveNotification(virtualMonitor.lastError)
+                        }
+                    }
+                }
+                section: "action"
+                device: root.currentDevice
+            },
+            PluginItem {
+                pluginName: "battery"
+                name: batteryInfo.displayString
+                iconNameOverride: batteryInfo.iconName
+                hidden: !batteryInfo.hasBattery
+                section: "info"
+                device: root.currentDevice
+            },
+            PluginItem {
+                pluginName: "connectivity_report"
+                name: connectivityInfo.displayString
+                iconNameOverride: connectivityInfo.iconName
+                hidden: !connectivityInfo.available
+                section: "info"
+                device: root.currentDevice
+            },
+            PluginItem {
+                name: i18nd("kdeconnect-app", "Address: %1 via %2", root.currentDevice.reachableAddresses, root.currentDevice.activeProviderNames)
+                hidden: !root.currentDevice.isReachable
+                section: "info"
+                device: root.currentDevice
+            }
+        ]
+
+        DropArea {
+            id: dropArea
+            parent: pluginsListView
+            anchors.fill: parent
+            enabled: sharePlugin.loaded
+            onEntered: drag => drag.accepted = drag.hasUrls
+            onDropped: drop => {
+                fileDialog.shareIface.shareUrls(drop.urls)
+                drop.accept(Qt.CopyAction)
+            }
+        }
+
+        Kirigami.PlaceholderMessage {
+            text: i18nd("kdeconnect-app", "This device is not paired.")
+            anchors.centerIn: parent
+            visible: root.currentDevice && root.currentDevice.isReachable && !root.currentDevice.isPaired && !root.currentDevice.isPairRequestedByPeer && !root.currentDevice.isPairRequested
+            helpfulAction: Kirigami.Action {
+                text: i18ndc("kdeconnect-app", "Request pairing with a given device", "Pair")
+                icon.name:"network-connect"
+                onTriggered: root.currentDevice.requestPairing()
+            }
+        }
+
+        Kirigami.PlaceholderMessage {
+            text: i18nd("kdeconnect-app", "Pair requested\nKey: " + root.currentDevice.verificationKey)
+            anchors.centerIn: parent
+            visible: root.currentDevice && root.currentDevice.isReachable && root.currentDevice.isPairRequested
+            QQC2.BusyIndicator {
+                Layout.alignment: Qt.AlignHCenter
+            }
+        }
+
+        Kirigami.PlaceholderMessage {
+            text: i18n("Pair requested\nKey: " + root.currentDevice.verificationKey)
+            visible: root.currentDevice && root.currentDevice.isPairRequestedByPeer
+            anchors.centerIn: parent
+            spacing: Kirigami.Units.largeSpacing
+            RowLayout {
+                QQC2.Button {
+                    text: i18nd("kdeconnect-app", "Accept")
+                    icon.name:"dialog-ok"
+                    onClicked: root.currentDevice.acceptPairing()
+                }
+
+                QQC2.Button {
+                    text: i18nd("kdeconnect-app", "Reject")
+                    icon.name:"dialog-cancel"
+                    onClicked: root.currentDevice.cancelPairing()
+                }
+            }
+        }
+
+        Kirigami.PlaceholderMessage {
+            visible: root.currentDevice && !root.currentDevice.isReachable
+            text: i18nd("kdeconnect-app", "This device is not reachable")
+            anchors.centerIn: parent
+        }
+    }
+
+    FileDialog {
+        id: fileDialog
+        readonly property var shareIface: root.currentDevice ? ShareDbusInterfaceFactory.create(root.currentDevice.id()) : null
+        title: i18nd("kdeconnect-app", "Please choose a file")
+        currentFolder: StandardPaths.standardLocations(StandardPaths.HomeLocation)[0]
+        fileMode: FileDialog.OpenFiles
+        onAccepted: shareIface.shareUrls(fileDialog.selectedFiles)
+    }
+}

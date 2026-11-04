@@ -1,0 +1,194 @@
+# Copyright (C) 2024 This file is copyright:
+# This file is distributed under the same license as the kdeconnect-kde package.
+#
+# Volkan Gezer <volkangezer@gmail.com>, 2021.
+# SPDX-FileCopyrightText: 2022-2026 Emir SARI <emir_sari@icloud.com>
+msgid ""
+msgstr ""
+"Project-Id-Version: kdeconnect-kde\n"
+"Report-Msgid-Bugs-To: https://bugs.kde.org\n"
+"POT-Creation-Date: 2026-10-21 00:51+0000\n"
+"PO-Revision-Date: 2026-10-07 19:19+0300\n"
+"Last-Translator: Emir SARI <emir_sari@icloud.com>\n"
+"Language-Team: Turkish <kde-l10n-tr@kde.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: Lokalize 26.08.0\n"
+
+#, kde-format
+msgctxt "NAME OF TRANSLATORS"
+msgid "Your names"
+msgstr "Hasan Kıran"
+
+#, kde-format
+msgctxt "EMAIL OF TRANSLATORS"
+msgid "Your emails"
+msgstr "sunder67@hotmail.com"
+
+#: deviceindicator.cpp:56
+#, kde-format
+msgid "Browse device"
+msgstr "Aygıta göz at"
+
+#: deviceindicator.cpp:70
+#, kde-format
+msgid "Send clipboard"
+msgstr "Pano gönder"
+
+#: deviceindicator.cpp:84
+#, kde-format
+msgctxt "@action:inmenu play bell sound"
+msgid "Ring device"
+msgstr "Aygıtı çaldır"
+
+#: deviceindicator.cpp:98
+#, kde-format
+msgid "Send files"
+msgstr "Dosyalar gönder"
+
+#: deviceindicator.cpp:124
+#, kde-format
+msgid "SMS Messages…"
+msgstr "SMS İletileri…"
+
+#: deviceindicator.cpp:137
+#, kde-format
+msgid "Run command"
+msgstr "Komut çalıştır"
+
+#: deviceindicator.cpp:139
+#, kde-format
+msgid "Add commands"
+msgstr "Komut ekle"
+
+#: indicatorhelper_mac.cpp:47 indicatorhelper_mac.cpp:58
+#, kde-format
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+#: indicatorhelper_mac.cpp:48
+#, kde-format
+msgid ""
+"Cannot connect to DBus\n"
+"KDE Connect will quit"
+msgstr ""
+"DBus’a bağlanılamıyor\n"
+"KDE Connect kapanacak"
+
+#: indicatorhelper_mac.cpp:58
+#, kde-format
+msgid "Cannot find kdeconnectd"
+msgstr "Kdeconnect bulunamıyor"
+
+#: main.cpp:62
+#, kde-format
+msgid "KDE Connect Indicator"
+msgstr "KDE Connect Indicator"
+
+#: main.cpp:64
+#, kde-format
+msgid "KDE Connect Indicator tool"
+msgstr "KDE Connect Indicator aracı"
+
+#: main.cpp:66
+#, kde-format
+msgid "© 2016–2025 KDE Connect Team"
+msgstr "© 2015–2025, KDE Connect Takımı"
+
+#: main.cpp:67
+#, kde-format
+msgid "Aleix Pol Gonzalez"
+msgstr "Aleix Pol Gonzalez"
+
+#: main.cpp:68
+#, kde-format
+msgid "Albert Vaca Cintora"
+msgstr "Albert Vaca Cintora"
+
+#: main.cpp:113
+#, kde-format
+msgid "Open app"
+msgstr "Uygulamayı aç"
+
+#: main.cpp:130
+#, kde-format
+msgid "Pairing requests"
+msgstr "Eşleştirme istekleri"
+
+#: main.cpp:136
+#, kde-format
+msgctxt "Accept a pairing request"
+msgid "Pair"
+msgstr "Eşleştir"
+
+#: main.cpp:137
+#, kde-format
+msgid "Reject"
+msgstr "Reddet"
+
+#: main.cpp:142 main.cpp:155
+#, kde-format
+msgid "Quit"
+msgstr "Çık"
+
+#: main.cpp:172 main.cpp:194
+#, kde-format
+msgid "%1 device connected"
+msgid_plural "%1 devices connected"
+msgstr[0] "%1 aygıt bağlandı"
+msgstr[1] "%1 aygıt bağlandı"
+
+#: systray_actions/battery_action.cpp:35
+#, kde-format
+msgid "No Battery"
+msgstr "Pil Yok"
+
+#: systray_actions/battery_action.cpp:37
+#, kde-format
+msgid "Battery: %1% (Charging)"
+msgstr "Pil: %​%1 (şarj oluyor)"
+
+#: systray_actions/battery_action.cpp:39
+#, kde-format
+msgid "Battery: %1%"
+msgstr "Pil: %​%1"
+
+#: systray_actions/connectivity_action.cpp:30
+#, kde-format
+msgctxt ""
+"The fallback text to display in case the remote device does not have a "
+"cellular connection"
+msgid "No Cellular Connectivity"
+msgstr "Hücresel Bağlantı Yok"
+
+#: systray_actions/connectivity_action.cpp:33
+#, kde-format
+msgctxt ""
+"Display the cellular connection type and an approximate percentage of signal "
+"strength"
+msgid "%1  | ~%2%"
+msgstr "%1  | ~%​%2"
+
+#~ msgid "Configure..."
+#~ msgstr "Yapılandır…"
+
+#~ msgid "Launching"
+#~ msgstr "Başlatılıyor"
+
+#~ msgid "Launching daemon"
+#~ msgstr "Ardalan süreci başlatılıyor"
+
+#~ msgid "Waiting D-Bus"
+#~ msgstr "D-Bus bekleniyor"
+
+#~ msgid "Loading modules"
+#~ msgstr "Modüller yükleniyor"
+
+#~ msgid "Get a photo"
+#~ msgstr "Bir fotoğraf al"
+
+#~ msgid "Select file to send to '%1'"
+#~ msgstr "'%1'  adresine gönderilecek dosyayı seç"
