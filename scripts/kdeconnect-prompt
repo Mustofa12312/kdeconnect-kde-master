@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-kdeconnect-prompt: Send interactive authorization prompt to paired phone via KDE Connect
-and wait for user selection.
+kdeconnect-prompt: Synchronized Dual-Screen Remote & Desktop Authorization Prompt
+Displays interactive approval card on BOTH Android phone (Apple Dynamic Island)
+and Desktop screen simultaneously. Tapping on either one dismisses both and proceeds!
 """
 
 import sys
@@ -18,7 +19,7 @@ except ImportError:
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="KDE Connect Remote Authorization Prompt")
+    parser = argparse.ArgumentParser(description="KDE Connect Dual-Screen Authorization Prompt")
     parser.add_argument("--title", "-t", default="Antigravity Authorization", help="Prompt title")
     parser.add_argument("--body", "-b", required=True, help="Prompt message or command snippet")
     parser.add_argument("--actions", "-a", nargs="+", default=[
@@ -27,7 +28,7 @@ def parse_arguments():
         "3:No"
     ], help="Action options format key:label")
     parser.add_argument("--device", "-d", default=None, help="Specific device ID")
-    parser.add_argument("--timeout", type=int, default=60, help="Timeout in seconds")
+    parser.add_argument("--timeout", type=int, default=15, help="Timeout in seconds")
     return parser.parse_args()
 
 
@@ -73,11 +74,6 @@ def main():
         sys.stderr.write(f"Error connecting to session bus: {e}\n")
         return 1
 
-    device_id = find_target_device(bus, args.device)
-    if not device_id:
-        sys.stderr.write("No reachable paired KDE Connect device found.\n")
-        return 2
-
     # Flatten actions into [key, label, key, label...]
     flattened_actions = []
     for item in args.actions:
@@ -90,43 +86,67 @@ def main():
     loop = GLib.MainLoop()
     result = {"action": None, "timed_out": False}
 
-    prompt_id_holder = [None]
+    phone_prompt_id = None
+    desktop_notif_id = None
+    desktop_iface = None
 
-    def on_action_invoked(action_id, action_key):
-        if prompt_id_holder[0] is None or str(action_id) == str(prompt_id_holder[0]):
+    # Get desktop notification interface
+    try:
+        notif_obj = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
+        desktop_iface = dbus.Interface(notif_obj, "org.freedesktop.Notifications")
+    except Exception:
+        pass
+
+    def cleanup_desktop_notification():
+        if desktop_iface and desktop_notif_id:
+            try:
+                desktop_iface.CloseNotification(dbus.UInt32(desktop_notif_id))
+            except Exception:
+                pass
+
+    def on_phone_action(action_id, action_key):
+        if phone_prompt_id is None or str(action_id) == str(phone_prompt_id):
             result["action"] = str(action_key)
+            cleanup_desktop_notification()
             loop.quit()
 
-    # Listen on KDE Connect sendnotifications D-Bus interface
-    bus.add_signal_receiver(
-        on_action_invoked,
-        signal_name="actionInvoked",
-        dbus_interface="org.kde.kdeconnect.device.sendnotifications",
-        path=f"/modules/kdeconnect/devices/{device_id}/sendnotifications"
-    )
+    def on_desktop_action(nid, action_key):
+        if desktop_notif_id is not None and int(nid) == int(desktop_notif_id):
+            result["action"] = str(action_key)
+            cleanup_desktop_notification()
+            loop.quit()
 
-    # Also listen on standard Freedesktop ActionInvoked as fallback
-    bus.add_signal_receiver(
-        on_action_invoked,
-        signal_name="ActionInvoked",
-        dbus_interface="org.freedesktop.Notifications"
-    )
-
-    # Attempt to send prompt via KDE Connect sendnotifications interface
-    sent = False
-    try:
-        sendnotif_obj = bus.get_object("org.kde.kdeconnect", f"/modules/kdeconnect/devices/{device_id}/sendnotifications")
-        sendnotif_iface = dbus.Interface(sendnotif_obj, "org.kde.kdeconnect.device.sendnotifications")
-        prompt_id_holder[0] = str(sendnotif_iface.sendPrompt(args.title, args.body, flattened_actions))
-        sent = True
-    except Exception:
-        # Fallback to org.freedesktop.Notifications.Notify with hints
+    # 1. Post to phone via KDE Connect if device reachable
+    device_id = find_target_device(bus, args.device)
+    if device_id:
+        bus.add_signal_receiver(
+            on_phone_action,
+            signal_name="actionInvoked",
+            dbus_interface="org.kde.kdeconnect.device.sendnotifications",
+            path=f"/modules/kdeconnect/devices/{device_id}/sendnotifications"
+        )
         try:
-            notif_obj = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
-            notif_iface = dbus.Interface(notif_obj, "org.freedesktop.Notifications")
-            hints = {"urgency": dbus.Byte(2), "x-kdeconnect-prompt": dbus.Boolean(True)}
-            nid = notif_iface.Notify(
-                args.title,
+            sendnotif_obj = bus.get_object("org.kde.kdeconnect", f"/modules/kdeconnect/devices/{device_id}/sendnotifications")
+            sendnotif_iface = dbus.Interface(sendnotif_obj, "org.kde.kdeconnect.device.sendnotifications")
+            phone_prompt_id = str(sendnotif_iface.sendPrompt(args.title, args.body, flattened_actions))
+        except Exception as e:
+            sys.stderr.write(f"Could not send prompt to phone: {e}\n")
+
+    # 2. ALSO post interactive notification on laptop desktop screen simultaneously!
+    if desktop_iface:
+        bus.add_signal_receiver(
+            on_desktop_action,
+            signal_name="ActionInvoked",
+            dbus_interface="org.freedesktop.Notifications"
+        )
+        try:
+            hints = {
+                "urgency": dbus.Byte(2),
+                "category": "device.authorization",
+                "x-kdeconnect-source-device": dbus.Boolean(True)  # prevents echo loop
+            }
+            desktop_notif_id = int(desktop_iface.Notify(
+                "Antigravity",
                 dbus.UInt32(0),
                 "security-high",
                 args.title,
@@ -134,19 +154,18 @@ def main():
                 flattened_actions,
                 hints,
                 dbus.Int32(args.timeout * 1000)
-            )
-            prompt_id_holder[0] = str(nid)
-            sent = True
-        except Exception as e2:
-            sys.stderr.write(f"Failed to send prompt via D-Bus: {e2}\n")
-            return 3
+            ))
+        except Exception as e:
+            sys.stderr.write(f"Could not show desktop notification: {e}\n")
 
-    if not sent:
+    # If neither phone nor desktop could be posted, fail to fallback
+    if not phone_prompt_id and not desktop_notif_id:
         return 3
 
     # Setup timeout
     def on_timeout():
         result["timed_out"] = True
+        cleanup_desktop_notification()
         loop.quit()
         return False
 
@@ -155,10 +174,12 @@ def main():
     try:
         loop.run()
     except KeyboardInterrupt:
+        cleanup_desktop_notification()
         return 130
 
+    cleanup_desktop_notification()
+
     if result["timed_out"]:
-        sys.stderr.write("Prompt timed out waiting for phone response.\n")
         return 4
 
     if result["action"]:

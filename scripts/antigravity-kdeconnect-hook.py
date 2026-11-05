@@ -3,6 +3,12 @@
 Global Antigravity PreToolUse Lifecycle Hook:
 Intercepts tool executions across ALL projects and prompts the user's smartphone
 via KDE Connect with Apple Dynamic Island interface.
+
+Includes:
+- Instant fallback if phone is offline (<0.2s)
+- Fast timeout fallback (12s) if user doesn't want to pick up the phone
+- One-touch toggle (phone-auth on/off)
+- Whitelist cache for "Always Allow"
 """
 
 import sys
@@ -11,6 +17,10 @@ import subprocess
 import os
 
 ALLOWLIST_FILE = os.path.expanduser("~/.gemini/antigravity/always_allowed_commands.json")
+DISABLED_FLAG_FILE = os.path.expanduser("~/.gemini/antigravity/phone_auth_disabled")
+
+def is_phone_auth_disabled():
+    return os.path.exists(DISABLED_FLAG_FILE)
 
 def load_allowlist():
     if os.path.exists(ALLOWLIST_FILE):
@@ -48,6 +58,11 @@ def main():
         print(json.dumps({"decision": "allow"}))
         return 0
 
+    # If user toggled off phone authorization, fallback to desktop modal immediately (0.01s)
+    if is_phone_auth_disabled():
+        print(json.dumps({"decision": "ask"}))
+        return 0
+
     tool_call = payload.get("toolCall", {})
     tool_name = tool_call.get("name", "unknown_tool")
     args = tool_call.get("args", {})
@@ -80,6 +95,7 @@ def main():
         prompt_bin = os.path.expanduser("~/Workspace/Research/kdeconnect-kde-master/scripts/kdeconnect-prompt")
 
     try:
+        # Fast 12s timeout: If user ignores the phone, fallback to laptop modal quickly!
         cmd = [
             prompt_bin,
             "--title", "Antigravity Authorization",
@@ -88,7 +104,7 @@ def main():
             "1:Yes, allow this time",
             "2:Yes, and always allow",
             "3:No",
-            "--timeout", "45"
+            "--timeout", "12"
         ]
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         chosen_action = proc.stdout.strip()
@@ -113,7 +129,8 @@ def main():
                 }))
                 return 0
         else:
-            # Phone was unreachable or prompt timed out: fallback to desktop GUI
+            # Phone was unreachable or user didn't pick up the phone (timed out in 12s):
+            # Fall back to desktop UI modal immediately
             print(json.dumps({"decision": "ask"}))
             return 0
 

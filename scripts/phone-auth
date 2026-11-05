@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#
+# Toggle Antigravity Phone Authorization on/off
+#
+
+FLAG_FILE="$HOME/.gemini/antigravity/phone_auth_disabled"
+
+ACTION="${1:-toggle}"
+
+case "$ACTION" in
+    off|disable|stop)
+        touch "$FLAG_FILE"
+        echo "[Phone-Auth] Status: NONAKTIF (Semua persetujuan langsung muncul di layar laptop)."
+        ;;
+    on|enable|start)
+        rm -f "$FLAG_FILE"
+        echo "[Phone-Auth] Status: AKTIF (Persetujuan akan dikirim ke HP Pixel 8a)."
+        ;;
+    status)
+        if [ -f "$FLAG_FILE" ]; then
+            echo "[Phone-Auth] Status: NONAKTIF (Mode Laptop Saja)"
+        else
+            echo "[Phone-Auth] Status: AKTIF (Mode HP Pixel 8a)"
+        fi
+        ;;
+    toggle)
+        if [ -f "$FLAG_FILE" ]; then
+            rm -f "$FLAG_FILE"
+            echo "[Phone-Auth] Beralih ke: AKTIF (Kirim ke HP Pixel 8a)."
+        else
+            touch "$FLAG_FILE"
+            echo "[Phone-Auth] Beralih ke: NONAKTIF (Langsung di layar laptop)."
+        fi
+        ;;
+    *)
+        echo "Penggunaan: phone-auth [on|off|status|toggle]"
+        ;;
+esac
+
