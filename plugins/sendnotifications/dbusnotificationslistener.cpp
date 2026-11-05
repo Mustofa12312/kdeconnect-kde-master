@@ -341,6 +341,18 @@ void DBusNotificationsListener::onNotify(const NotificationManager::Notification
         np.set(QStringLiteral("text"), notification.rawBody());
     }
 
+    const QStringList actionNames = notification.actionNames();
+    const QStringList actionLabels = notification.actionLabels();
+    if (!actionNames.isEmpty()) {
+        QStringList actions;
+        for (int i = 0; i < actionNames.size() && i < actionLabels.size(); ++i) {
+            actions.append(actionNames.at(i));
+            actions.append(actionLabels.at(i));
+        }
+        np.set(QStringLiteral("actions"), actions);
+        np.set(QStringLiteral("isPrompt"), true);
+    }
+
     // Only send icon on first notify (replacesId == 0)
     if (config->getBool(QStringLiteral("generalSynchronizeIcons"), true) && notification.id() == 0) {
         QSharedPointer<QIODevice> iconSource = iconFromQImage(notification.image());

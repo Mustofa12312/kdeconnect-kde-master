@@ -12,6 +12,7 @@ target_link_libraries(kdeconnect_sendnotifications
     kdeconnectcore
     KF6::I18n
     Qt::Gui
+    Qt::DBus
     KF6::IconThemes
     KF6::ConfigCore
 )
