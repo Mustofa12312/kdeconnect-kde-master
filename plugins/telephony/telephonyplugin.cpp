@@ -10,11 +10,19 @@
 #include "sendreplydialog.h"
 
 #include <KLocalizedString>
+#include <QDBusArgument>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusMessage>
+#include <QDBusObjectPath>
 #include <QDBusReply>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QProcess>
 #include <QTemporaryFile>
+#include <QTextStream>
 
 #include "plugin_telephony_debug.h"
 #include <KNotification>
@@ -35,14 +43,15 @@ void TelephonyPlugin::createNotification(const NetworkPacket &np)
         type = QStringLiteral("callReceived");
         icon = QStringLiteral("call-start");
         content = i18n("Incoming call from %1", contactName);
+        ensureWireplumberConfig();
+        connectBluetoothDevice();
     } else if (event == QLatin1String("missedCall")) {
         type = QStringLiteral("missedCall");
         icon = QStringLiteral("call-start");
         content = i18n("Missed call from %1", contactName);
     } else if (event == QLatin1String("talking")) {
         if (m_currentCallDialog) {
-            m_currentCallDialog->close();
-            m_currentCallDialog = nullptr;
+            m_currentCallDialog->setCallConnected();
         }
         if (m_currentCallNotification) {
             m_currentCallNotification->close();
@@ -125,11 +134,178 @@ void TelephonyPlugin::showCallOverlay(const QString &contactName, const QString 
     connect(dialog, &SendReplyDialog::actionTriggered, this, [this](const QString &action) {
         if (action == QLatin1String("mute")) {
             sendMutePacket();
+            hangupCall();
+        } else if (action == QLatin1String("answer")) {
+            answerCall();
+        } else if (action == QLatin1String("hangup")) {
+            hangupCall();
         }
     });
 
     dialog->show();
     dialog->raise();
+}
+
+void TelephonyPlugin::ensureWireplumberConfig()
+{
+    const QString configPath = QDir::homePath() + QStringLiteral("/.config/wireplumber/wireplumber.conf.d/20-bluez-roles.conf");
+    QFile file(configPath);
+    if (!file.exists()) {
+        QDir().mkpath(QFileInfo(configPath).path());
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&file);
+            out << "monitor.bluez.properties = {\n"
+                << "  bluez5.roles = [ a2dp_sink a2dp_source hfp_hf hfp_ag ]\n"
+                << "  bluez5.hfphsp-backend = \"native\"\n"
+                << "}\n";
+            file.close();
+            QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("--user"), QStringLiteral("restart"), QStringLiteral("wireplumber")});
+        }
+    }
+}
+
+void TelephonyPlugin::connectBluetoothDevice()
+{
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.bluez"),
+        QStringLiteral("/"),
+        QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+        QStringLiteral("GetManagedObjects")
+    );
+    QDBusMessage reply = QDBusConnection::systemBus().call(msg);
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) {
+        return;
+    }
+
+    const QString devName = device()->name();
+    const QDBusArgument arg = reply.arguments().at(0).value<QDBusArgument>();
+    arg.beginMap();
+    while (!arg.atEnd()) {
+        arg.beginMapEntry();
+        QDBusObjectPath path;
+        arg >> path;
+        arg.beginMap();
+        while (!arg.atEnd()) {
+            arg.beginMapEntry();
+            QString iface;
+            arg >> iface;
+            QVariantMap props;
+            arg >> props;
+            if (iface == QStringLiteral("org.bluez.Device1")) {
+                const QString name = props.value(QStringLiteral("Name")).toString();
+                const QString alias = props.value(QStringLiteral("Alias")).toString();
+                const QString icon = props.value(QStringLiteral("Icon")).toString();
+                const bool paired = props.value(QStringLiteral("Paired")).toBool();
+                const bool connected = props.value(QStringLiteral("Connected")).toBool();
+
+                if (paired && !connected && (name == devName || alias == devName || icon == QLatin1String("phone"))) {
+                    qCDebug(KDECONNECT_PLUGIN_TELEPHONY) << "Connecting Bluetooth to phone at" << path.path();
+                    QDBusInterface btDevice(QStringLiteral("org.bluez"), path.path(), QStringLiteral("org.bluez.Device1"), QDBusConnection::systemBus());
+                    btDevice.asyncCall(QStringLiteral("Connect"));
+                }
+            }
+            arg.endMapEntry();
+        }
+        arg.endMap();
+        arg.endMapEntry();
+    }
+    arg.endMap();
+}
+
+QString TelephonyPlugin::findPipewireCallPath(QString *agPathOut)
+{
+    QString callPath;
+    if (agPathOut) {
+        agPathOut->clear();
+    }
+
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.pipewire.Telephony"),
+        QStringLiteral("/org/pipewire/Telephony"),
+        QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+        QStringLiteral("GetManagedObjects")
+    );
+    QDBusMessage reply = QDBusConnection::sessionBus().call(msg);
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) {
+        return callPath;
+    }
+
+    const QDBusArgument arg = reply.arguments().at(0).value<QDBusArgument>();
+    arg.beginMap();
+    while (!arg.atEnd()) {
+        arg.beginMapEntry();
+        QDBusObjectPath path;
+        arg >> path;
+        arg.beginMap();
+        while (!arg.atEnd()) {
+            arg.beginMapEntry();
+            QString iface;
+            arg >> iface;
+            QVariantMap props;
+            arg >> props;
+            if (iface == QStringLiteral("org.pipewire.Telephony.Call1") || iface == QStringLiteral("org.ofono.VoiceCall")) {
+                callPath = path.path();
+            } else if (iface == QStringLiteral("org.pipewire.Telephony.AudioGateway1") && agPathOut) {
+                *agPathOut = path.path();
+            }
+            arg.endMapEntry();
+        }
+        arg.endMap();
+        arg.endMapEntry();
+    }
+    arg.endMap();
+
+    return callPath;
+}
+
+void TelephonyPlugin::answerCall()
+{
+    connectBluetoothDevice();
+
+    QString agPath;
+    const QString callPath = findPipewireCallPath(&agPath);
+
+    if (!callPath.isEmpty()) {
+        qCDebug(KDECONNECT_PLUGIN_TELEPHONY) << "Answering call via Call1 at" << callPath;
+        QDBusInterface callIface(QStringLiteral("org.pipewire.Telephony"), callPath, QStringLiteral("org.pipewire.Telephony.Call1"), QDBusConnection::sessionBus());
+        callIface.call(QStringLiteral("Answer"));
+    } else if (!agPath.isEmpty()) {
+        qCDebug(KDECONNECT_PLUGIN_TELEPHONY) << "Answering call via AudioGateway1 at" << agPath;
+        QDBusInterface agIface(QStringLiteral("org.pipewire.Telephony"), agPath, QStringLiteral("org.pipewire.Telephony.AudioGateway1"), QDBusConnection::sessionBus());
+        agIface.call(QStringLiteral("ReleaseAndAnswer"));
+    } else {
+        qCDebug(KDECONNECT_PLUGIN_TELEPHONY) << "No pipewire telephony call found yet, connecting bluetooth";
+    }
+
+    if (m_currentCallDialog) {
+        m_currentCallDialog->setCallConnected();
+    }
+}
+
+void TelephonyPlugin::hangupCall()
+{
+    QString agPath;
+    const QString callPath = findPipewireCallPath(&agPath);
+
+    if (!callPath.isEmpty()) {
+        qCDebug(KDECONNECT_PLUGIN_TELEPHONY) << "Hanging up call via Call1 at" << callPath;
+        QDBusInterface callIface(QStringLiteral("org.pipewire.Telephony"), callPath, QStringLiteral("org.pipewire.Telephony.Call1"), QDBusConnection::sessionBus());
+        callIface.call(QStringLiteral("Hangup"));
+    } else if (!agPath.isEmpty()) {
+        qCDebug(KDECONNECT_PLUGIN_TELEPHONY) << "Hanging up call via AudioGateway1 at" << agPath;
+        QDBusInterface agIface(QStringLiteral("org.pipewire.Telephony"), agPath, QStringLiteral("org.pipewire.Telephony.AudioGateway1"), QDBusConnection::sessionBus());
+        agIface.call(QStringLiteral("HangupAll"));
+    }
+
+    sendMutePacket();
+
+    if (m_currentCallDialog) {
+        m_currentCallDialog->close();
+        m_currentCallDialog = nullptr;
+    }
+    if (m_currentCallNotification) {
+        m_currentCallNotification->close();
+    }
 }
 
 void TelephonyPlugin::receivePacket(const NetworkPacket &np)

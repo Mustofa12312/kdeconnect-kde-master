@@ -212,10 +212,10 @@ void SendReplyDialog::initUi(const QString &originalMessage,
     const QString displayMessage = m_isCall
         ? (cleanMessage.isEmpty() ? i18nc("@info:status", "Panggilan suara masuk") : cleanMessage)
         : cleanMessage;
-    auto messageLabel = new QLabel(displayMessage, card1);
-    messageLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 10pt; border: none; background: transparent;"));
-    messageLabel->setWordWrap(true);
-    textLayout->addWidget(messageLabel);
+    m_messageLabel = new QLabel(displayMessage, card1);
+    m_messageLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 10pt; border: none; background: transparent;"));
+    m_messageLabel->setWordWrap(true);
+    textLayout->addWidget(m_messageLabel);
 
     bodyLayout->addLayout(textLayout, 1);
     card1Layout->addLayout(bodyLayout);
@@ -226,8 +226,8 @@ void SendReplyDialog::initUi(const QString &originalMessage,
 
     if (m_isCall) {
         // Red Tolak button
-        auto declineBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-stop")), i18nc("@action:button", "Tolak"), card1);
-        declineBtn->setStyleSheet(QStringLiteral(
+        m_declineBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-stop")), i18nc("@action:button", "Tolak"), card1);
+        m_declineBtn->setStyleSheet(QStringLiteral(
             "QPushButton {"
             "  color: #ffffff;"
             "  background-color: #dc2626;"
@@ -240,7 +240,7 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             "QPushButton:hover { background-color: #ef4444; }"
             "QPushButton:pressed { background-color: #b91c1c; }"
         ));
-        connect(declineBtn, &QPushButton::clicked, this, [this]() {
+        connect(m_declineBtn, &QPushButton::clicked, this, [this]() {
             if (!m_declineAction.isEmpty()) {
                 Q_EMIT actionTriggered(m_declineAction);
             } else {
@@ -248,13 +248,13 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             }
             close();
         });
-        actionLayout->addWidget(declineBtn);
+        actionLayout->addWidget(m_declineBtn);
 
         actionLayout->addStretch();
 
         // Green Angkat button
-        auto answerBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-start")), i18nc("@action:button", "Angkat"), card1);
-        answerBtn->setStyleSheet(QStringLiteral(
+        m_answerBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-start")), i18nc("@action:button", "Angkat"), card1);
+        m_answerBtn->setStyleSheet(QStringLiteral(
             "QPushButton {"
             "  color: #ffffff;"
             "  background-color: #16a34a;"
@@ -267,23 +267,13 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             "QPushButton:hover { background-color: #22c55e; }"
             "QPushButton:pressed { background-color: #15803d; }"
         ));
-        connect(answerBtn, &QPushButton::clicked, this, [this, answerBtn, declineBtn, messageLabel]() {
+        connect(m_answerBtn, &QPushButton::clicked, this, [this]() {
             if (!m_answerAction.isEmpty()) {
                 Q_EMIT actionTriggered(m_answerAction);
             }
-            if (m_statusLabel) {
-                m_statusLabel->setText(i18nc("@info:status", "Bicara di Ponsel"));
-                m_statusLabel->setStyleSheet(QStringLiteral("color: #4ade80; font-weight: bold; font-size: 9.5pt; border: none; background: transparent;"));
-            }
-            if (messageLabel) {
-                messageLabel->setText(i18nc("@info:status", "Panggilan aktif di HP. Hubungkan Bluetooth jika ingin bicara lewat PC"));
-                messageLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 9.5pt; border: none; background: transparent;"));
-            }
-            answerBtn->setEnabled(false);
-            declineBtn->setEnabled(false);
-            QTimer::singleShot(4000, this, &QWidget::close);
+            setCallConnected();
         });
-        actionLayout->addWidget(answerBtn);
+        actionLayout->addWidget(m_answerBtn);
     } else {
         auto markReadBtn = new QPushButton(i18nc("@action:button", "Tandai sudah dibaca"), card1);
         markReadBtn->setStyleSheet(QStringLiteral(
@@ -502,6 +492,66 @@ void SendReplyDialog::keyPressEvent(QKeyEvent *event)
         return;
     }
     QDialog::keyPressEvent(event);
+}
+
+void SendReplyDialog::setCallConnected()
+{
+    if (m_autoCloseTimer && m_autoCloseTimer->isActive()) {
+        m_autoCloseTimer->stop();
+    }
+
+    if (m_statusLabel) {
+        m_statusLabel->setText(i18nc("@info:status", "Panggilan Terhubung"));
+        m_statusLabel->setStyleSheet(QStringLiteral("color: #4ade80; font-weight: bold; font-size: 9.5pt; border: none; background: transparent;"));
+    }
+
+    if (m_messageLabel) {
+        m_messageLabel->setText(i18nc("@info:status", "Audio Laptop Aktif (Mic & Speaker Terhubung)"));
+        m_messageLabel->setStyleSheet(QStringLiteral("color: #86efac; font-size: 9.5pt; border: none; background: transparent;"));
+    }
+
+    if (m_answerBtn) {
+        m_answerBtn->hide();
+    }
+
+    if (m_declineBtn) {
+        m_declineBtn->disconnect();
+        m_declineBtn->setText(i18nc("@action:button", "Tutup Panggilan"));
+        m_declineBtn->setIcon(QIcon::fromTheme(QStringLiteral("call-stop")));
+        m_declineBtn->setStyleSheet(QStringLiteral(
+            "QPushButton {"
+            "  color: #ffffff;"
+            "  background-color: #dc2626;"
+            "  border: none;"
+            "  border-radius: 12px;"
+            "  padding: 8px 30px;"
+            "  font-weight: bold;"
+            "  font-size: 10pt;"
+            "}"
+            "QPushButton:hover { background-color: #ef4444; }"
+            "QPushButton:pressed { background-color: #b91c1c; }"
+        ));
+        connect(m_declineBtn, &QPushButton::clicked, this, [this]() {
+            Q_EMIT actionTriggered(QStringLiteral("hangup"));
+            close();
+        });
+    }
+
+    if (!m_callDurationTimer) {
+        m_callDurationTimer = new QTimer(this);
+        m_callDurationSeconds = 0;
+        connect(m_callDurationTimer, &QTimer::timeout, this, [this]() {
+            m_callDurationSeconds++;
+            const int mins = m_callDurationSeconds / 60;
+            const int secs = m_callDurationSeconds % 60;
+            if (m_statusLabel) {
+                m_statusLabel->setText(QStringLiteral("Terhubung (%1:%2)")
+                    .arg(mins, 2, 10, QLatin1Char('0'))
+                    .arg(secs, 2, 10, QLatin1Char('0')));
+            }
+        });
+        m_callDurationTimer->start(1000);
+    }
 }
 
 #include "moc_sendreplydialog.cpp"

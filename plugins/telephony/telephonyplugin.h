@@ -35,10 +35,15 @@ Q_SIGNALS:
 
 private Q_SLOTS:
     void sendMutePacket();
+    void answerCall();
+    void hangupCall();
 
 private:
     void createNotification(const NetworkPacket &np);
     void showCallOverlay(const QString &contactName, const QString &phoneNumber, const QByteArray &phoneThumbnail);
+    void ensureWireplumberConfig();
+    void connectBluetoothDevice();
+    QString findPipewireCallPath(QString *agPath = nullptr);
 
     QPointer<KNotification> m_currentCallNotification;
     QPointer<SendReplyDialog> m_currentCallDialog;

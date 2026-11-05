@@ -13,6 +13,7 @@
 
 class QLineEdit;
 class QLabel;
+class QPushButton;
 class QTimer;
 class QEnterEvent;
 
@@ -33,6 +34,9 @@ public:
     ~SendReplyDialog() override;
 
     QSize sizeHint() const override;
+
+public Q_SLOTS:
+    void setCallConnected();
 
 Q_SIGNALS:
     void sendReply(const QString &replyId, const QString &messageBody);
@@ -63,7 +67,12 @@ private:
 
     QLineEdit *m_replyInput = nullptr;
     QLabel *m_statusLabel = nullptr;
+    QLabel *m_messageLabel = nullptr;
+    QPushButton *m_answerBtn = nullptr;
+    QPushButton *m_declineBtn = nullptr;
     QTimer *m_autoCloseTimer = nullptr;
+    QTimer *m_callDurationTimer = nullptr;
+    int m_callDurationSeconds = 0;
 
     static QPointer<SendReplyDialog> s_currentInstance;
 };
