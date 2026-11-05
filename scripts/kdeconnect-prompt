@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+kdeconnect-prompt: Send interactive authorization prompt to paired phone via KDE Connect
+and wait for user selection.
+"""
+
+import sys
+import os
+import argparse
+import time
+
+try:
+    import dbus
+    from dbus.mainloop.glib import DBusGMainLoop
+    from gi.repository import GLib
+except ImportError:
+    # If dbus / glib is not available
+    pass
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="KDE Connect Remote Authorization Prompt")
+    parser.add_argument("--title", "-t", default="Antigravity Authorization", help="Prompt title")
+    parser.add_argument("--body", "-b", required=True, help="Prompt message or command snippet")
+    parser.add_argument("--actions", "-a", nargs="+", default=[
+        "1:Yes, allow this time",
+        "2:Yes, and always allow",
+        "3:No"
+    ], help="Action options format key:label")
+    parser.add_argument("--device", "-d", default=None, help="Specific device ID")
+    parser.add_argument("--timeout", type=int, default=60, help="Timeout in seconds")
+    return parser.parse_args()
+
+
+def find_target_device(bus, requested_device_id=None):
+    daemon_obj = bus.get_object("org.kde.kdeconnect", "/modules/kdeconnect")
+    daemon_iface = dbus.Interface(daemon_obj, "org.kde.kdeconnect.daemon")
+    
+    devices = daemon_iface.devices(True, True)  # onlyReachable=True, onlyPaired=True
+    if not devices:
+        return None
+        
+    if requested_device_id:
+        if requested_device_id in devices:
+            return requested_device_id
+        return None
+        
+    # Return first reachable paired device
+    return str(devices[0])
+
+
+def main():
+    args = parse_arguments()
+    
+    DBusGMainLoop(set_as_default=True)
+    try:
+        bus = dbus.SessionBus()
+    except Exception as e:
+        sys.stderr.write(f"Error connecting to session bus: {e}\n")
+        return 1
+
+    device_id = find_target_device(bus, args.device)
+    if not device_id:
+        sys.stderr.write("No reachable paired KDE Connect device found.\n")
+        return 2
+
+    # Flatten actions into [key, label, key, label...]
+    flattened_actions = []
+    for item in args.actions:
+        if ":" in item:
+            k, v = item.split(":", 1)
+            flattened_actions.extend([k.strip(), v.strip()])
+        else:
+            flattened_actions.extend([item.strip(), item.strip()])
+
+    loop = GLib.MainLoop()
+    result = {"action": None, "timed_out": False}
+
+    def on_action_invoked(action_id, action_key):
+        if str(action_id) == str(prompt_id):
+            result["action"] = str(action_key)
+            loop.quit()
+
+    # Subscribe to actionInvoked signal
+    bus.add_signal_receiver(
+        on_action_invoked,
+        signal_name="actionInvoked",
+        dbus_interface="org.kde.kdeconnect.device.sendnotifications",
+        path=f"/modules/kdeconnect/devices/{device_id}/sendnotifications"
+    )
+
+    # Send the prompt
+    sendnotif_obj = bus.get_object("org.kde.kdeconnect", f"/modules/kdeconnect/devices/{device_id}/sendnotifications")
+    sendnotif_iface = dbus.Interface(sendnotif_obj, "org.kde.kdeconnect.device.sendnotifications")
+    
+    try:
+        prompt_id = sendnotif_iface.sendPrompt(args.title, args.body, flattened_actions)
+    except Exception as e:
+        sys.stderr.write(f"Failed to send prompt: {e}\n")
+        return 3
+
+    # Setup timeout
+    def on_timeout():
+        result["timed_out"] = True
+        loop.quit()
+        return False
+
+    GLib.timeout_add_seconds(args.timeout, on_timeout)
+
+    try:
+        loop.run()
+    except KeyboardInterrupt:
+        return 130
+
+    if result["timed_out"]:
+        sys.stderr.write("Prompt timed out waiting for phone response.\n")
+        return 4
+
+    if result["action"]:
+        print(result["action"])
+        return 0
+
+    return 5
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

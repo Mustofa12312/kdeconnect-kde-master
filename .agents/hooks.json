@@ -1,0 +1,17 @@
+{
+  "kdeconnect-auth-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "command": "/home/mustofa/Workspace/Research/kdeconnect-kde-master/scripts/antigravity-kdeconnect-hook.py",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
+
