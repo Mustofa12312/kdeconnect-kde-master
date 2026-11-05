@@ -179,8 +179,9 @@ void NotificationsPlugin::showNotificationOverlay(Notification *noti)
     const bool isCall = noti->isCall();
     const QString answerAction = noti->callAnswerAction();
     const QString declineAction = noti->callDeclineAction();
+    const QStringList actions = noti->actions();
 
-    auto dialog = new SendReplyDialog(originalMessage, replyId, topicName, senderName, iconPath, isCall, answerAction, declineAction);
+    auto dialog = new SendReplyDialog(originalMessage, replyId, topicName, senderName, iconPath, isCall, answerAction, declineAction, actions);
     m_currentOverlay = dialog;
     m_currentOverlayInternalId = noti->internalId();
 

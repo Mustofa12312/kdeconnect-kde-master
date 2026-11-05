@@ -30,6 +30,7 @@ public:
                              bool isCall = false,
                              const QString &answerAction = QString(),
                              const QString &declineAction = QString(),
+                             const QStringList &actions = QStringList(),
                              QWidget *parent = nullptr);
     ~SendReplyDialog() override;
 
@@ -57,12 +58,14 @@ private:
                 const QString &iconPath,
                 bool isCall,
                 const QString &answerAction,
-                const QString &declineAction);
+                const QString &declineAction,
+                const QStringList &actions);
     void positionUnderClock();
 
     QString m_replyId;
     QString m_answerAction;
     QString m_declineAction;
+    QStringList m_actions;
     bool m_isCall = false;
 
     QLineEdit *m_replyInput = nullptr;

@@ -8,6 +8,7 @@
 #include "sendreplydialog.h"
 
 #include <QBoxLayout>
+#include <QCursor>
 #include <QEnterEvent>
 #include <QFile>
 #include <QFrame>
@@ -34,10 +35,11 @@ SendReplyDialog::SendReplyDialog(const QString &originalMessage,
                                  bool isCall,
                                  const QString &answerAction,
                                  const QString &declineAction,
+                                 const QStringList &actions,
                                  QWidget *parent)
     : QDialog(parent)
 {
-    initUi(originalMessage, replyId, topicName, senderName, iconPath, isCall, answerAction, declineAction);
+    initUi(originalMessage, replyId, topicName, senderName, iconPath, isCall, answerAction, declineAction, actions);
 }
 
 SendReplyDialog::~SendReplyDialog()
@@ -54,7 +56,8 @@ void SendReplyDialog::initUi(const QString &originalMessage,
                              const QString &iconPath,
                              bool isCall,
                              const QString &answerAction,
-                             const QString &declineAction)
+                             const QString &declineAction,
+                             const QStringList &actions)
 {
     if (s_currentInstance && s_currentInstance != this) {
         s_currentInstance->close();
@@ -66,6 +69,7 @@ void SendReplyDialog::initUi(const QString &originalMessage,
     m_isCall = isCall;
     m_answerAction = answerAction;
     m_declineAction = declineAction;
+    m_actions = actions;
 
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
     setAttribute(Qt::WA_TranslucentBackground);
@@ -274,6 +278,84 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             setCallConnected();
         });
         actionLayout->addWidget(m_answerBtn);
+    } else if (!m_actions.isEmpty()) {
+        bool hasReplyBtn = false;
+        int actionCount = 0;
+        for (const QString &action : std::as_const(m_actions)) {
+            if (actionCount >= 3) {
+                break;
+            }
+            const QString lowerAction = action.toLower();
+            const bool isReply = lowerAction.contains(QLatin1String("reply")) || lowerAction.contains(QLatin1String("balas"));
+
+            auto actionBtn = new QPushButton(action, card1);
+            if (isReply) {
+                hasReplyBtn = true;
+                actionBtn->setStyleSheet(QStringLiteral(
+                    "QPushButton {"
+                    "  color: #ffffff;"
+                    "  background: #2563eb;"
+                    "  border: none;"
+                    "  border-radius: 12px;"
+                    "  padding: 6px 18px;"
+                    "  font-weight: bold;"
+                    "  font-size: 9.5pt;"
+                    "}"
+                    "QPushButton:hover { background: #3b82f6; }"
+                    "QPushButton:pressed { background: #1d4ed8; }"
+                ));
+                connect(actionBtn, &QPushButton::clicked, this, [this]() {
+                    if (m_replyInput) {
+                        m_replyInput->setFocus();
+                    }
+                });
+            } else {
+                actionBtn->setStyleSheet(QStringLiteral(
+                    "QPushButton {"
+                    "  color: #e2e8f0;"
+                    "  background: rgba(255, 255, 255, 0.08);"
+                    "  border: 1px solid rgba(255, 255, 255, 0.1);"
+                    "  border-radius: 12px;"
+                    "  padding: 6px 14px;"
+                    "  font-size: 9.5pt;"
+                    "}"
+                    "QPushButton:hover { background: rgba(255, 255, 255, 0.14); }"
+                    "QPushButton:pressed { background: rgba(255, 255, 255, 0.2); }"
+                ));
+                connect(actionBtn, &QPushButton::clicked, this, [this, action]() {
+                    Q_EMIT actionTriggered(action);
+                    close();
+                });
+            }
+            actionLayout->addWidget(actionBtn);
+            actionCount++;
+        }
+
+        if (!m_replyId.isEmpty() && !hasReplyBtn) {
+            actionLayout->addStretch();
+            auto replyBtn = new QPushButton(i18nc("@action:button", "Balas"), card1);
+            replyBtn->setStyleSheet(QStringLiteral(
+                "QPushButton {"
+                "  color: #ffffff;"
+                "  background: #2563eb;"
+                "  border: none;"
+                "  border-radius: 12px;"
+                "  padding: 6px 20px;"
+                "  font-weight: bold;"
+                "  font-size: 10pt;"
+                "}"
+                "QPushButton:hover { background: #3b82f6; }"
+                "QPushButton:pressed { background: #1d4ed8; }"
+            ));
+            connect(replyBtn, &QPushButton::clicked, this, [this]() {
+                if (m_replyInput) {
+                    m_replyInput->setFocus();
+                }
+            });
+            actionLayout->addWidget(replyBtn);
+        } else {
+            actionLayout->addStretch();
+        }
     } else {
         auto markReadBtn = new QPushButton(i18nc("@action:button", "Tandai sudah dibaca"), card1);
         markReadBtn->setStyleSheet(QStringLiteral(
@@ -446,11 +528,14 @@ void SendReplyDialog::positionUnderClock()
     setFixedWidth(520);
     adjustSize();
 
-    QScreen *screen = QGuiApplication::primaryScreen();
+    QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
     if (screen) {
-        QRect geom = screen->geometry();
-        int targetX = geom.x() + (geom.width() - 520) / 2;
-        int targetY = geom.y() + 38;
+        const QRect geom = screen->geometry();
+        const int targetX = geom.x() + (geom.width() - 520) / 2;
+        const int targetY = geom.y() + 38;
         move(targetX, targetY);
     }
 }
@@ -481,7 +566,13 @@ void SendReplyDialog::leaveEvent(QEvent *event)
 
 QSize SendReplyDialog::sizeHint() const
 {
-    return QSize(520, m_isCall ? 170 : 250);
+    if (m_isCall) {
+        return QSize(520, 170);
+    }
+    if (m_replyId.isEmpty()) {
+        return QSize(520, 140);
+    }
+    return QSize(520, 250);
 }
 
 void SendReplyDialog::keyPressEvent(QKeyEvent *event)
