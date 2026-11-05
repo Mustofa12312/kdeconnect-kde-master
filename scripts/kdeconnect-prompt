@@ -14,7 +14,6 @@ try:
     from dbus.mainloop.glib import DBusGMainLoop
     from gi.repository import GLib
 except ImportError:
-    # If dbus / glib is not available
     pass
 
 
@@ -33,25 +32,40 @@ def parse_arguments():
 
 
 def find_target_device(bus, requested_device_id=None):
-    daemon_obj = bus.get_object("org.kde.kdeconnect", "/modules/kdeconnect")
-    daemon_iface = dbus.Interface(daemon_obj, "org.kde.kdeconnect.daemon")
-    
-    devices = daemon_iface.devices(True, True)  # onlyReachable=True, onlyPaired=True
+    try:
+        daemon_obj = bus.get_object("org.kde.kdeconnect", "/modules/kdeconnect")
+        daemon_iface = dbus.Interface(daemon_obj, "org.kde.kdeconnect.daemon")
+        devices = daemon_iface.devices(True, True)
+    except Exception as e:
+        sys.stderr.write(f"Cannot query KDE Connect daemon: {e}\n")
+        return None
+
     if not devices:
         return None
-        
-    if requested_device_id:
-        if requested_device_id in devices:
-            return requested_device_id
-        return None
-        
-    # Return first reachable paired device
-    return str(devices[0])
+
+    for dev in devices:
+        dev_id = str(dev)
+        if requested_device_id and dev_id != requested_device_id:
+            continue
+        try:
+            obj = bus.get_object("org.kde.kdeconnect", f"/modules/kdeconnect/devices/{dev_id}")
+            props = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
+            is_reachable = bool(props.Get("org.kde.kdeconnect.device", "isReachable"))
+            if is_reachable:
+                # Ensure sendnotifications plugin is enabled
+                dev_iface = dbus.Interface(obj, "org.kde.kdeconnect.device")
+                if not dev_iface.isPluginEnabled("kdeconnect_sendnotifications"):
+                    dev_iface.setPluginEnabled("kdeconnect_sendnotifications", True)
+                return dev_id
+        except Exception:
+            continue
+
+    return None
 
 
 def main():
     args = parse_arguments()
-    
+
     DBusGMainLoop(set_as_default=True)
     try:
         bus = dbus.SessionBus()
@@ -76,12 +90,14 @@ def main():
     loop = GLib.MainLoop()
     result = {"action": None, "timed_out": False}
 
+    prompt_id_holder = [None]
+
     def on_action_invoked(action_id, action_key):
-        if str(action_id) == str(prompt_id):
+        if prompt_id_holder[0] is None or str(action_id) == str(prompt_id_holder[0]):
             result["action"] = str(action_key)
             loop.quit()
 
-    # Subscribe to actionInvoked signal
+    # Listen on KDE Connect sendnotifications D-Bus interface
     bus.add_signal_receiver(
         on_action_invoked,
         signal_name="actionInvoked",
@@ -89,14 +105,43 @@ def main():
         path=f"/modules/kdeconnect/devices/{device_id}/sendnotifications"
     )
 
-    # Send the prompt
-    sendnotif_obj = bus.get_object("org.kde.kdeconnect", f"/modules/kdeconnect/devices/{device_id}/sendnotifications")
-    sendnotif_iface = dbus.Interface(sendnotif_obj, "org.kde.kdeconnect.device.sendnotifications")
-    
+    # Also listen on standard Freedesktop ActionInvoked as fallback
+    bus.add_signal_receiver(
+        on_action_invoked,
+        signal_name="ActionInvoked",
+        dbus_interface="org.freedesktop.Notifications"
+    )
+
+    # Attempt to send prompt via KDE Connect sendnotifications interface
+    sent = False
     try:
-        prompt_id = sendnotif_iface.sendPrompt(args.title, args.body, flattened_actions)
-    except Exception as e:
-        sys.stderr.write(f"Failed to send prompt: {e}\n")
+        sendnotif_obj = bus.get_object("org.kde.kdeconnect", f"/modules/kdeconnect/devices/{device_id}/sendnotifications")
+        sendnotif_iface = dbus.Interface(sendnotif_obj, "org.kde.kdeconnect.device.sendnotifications")
+        prompt_id_holder[0] = str(sendnotif_iface.sendPrompt(args.title, args.body, flattened_actions))
+        sent = True
+    except Exception:
+        # Fallback to org.freedesktop.Notifications.Notify with hints
+        try:
+            notif_obj = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
+            notif_iface = dbus.Interface(notif_obj, "org.freedesktop.Notifications")
+            hints = {"urgency": dbus.Byte(2), "x-kdeconnect-prompt": dbus.Boolean(True)}
+            nid = notif_iface.Notify(
+                args.title,
+                dbus.UInt32(0),
+                "security-high",
+                args.title,
+                args.body,
+                flattened_actions,
+                hints,
+                dbus.Int32(args.timeout * 1000)
+            )
+            prompt_id_holder[0] = str(nid)
+            sent = True
+        except Exception as e2:
+            sys.stderr.write(f"Failed to send prompt via D-Bus: {e2}\n")
+            return 3
+
+    if not sent:
         return 3
 
     # Setup timeout
@@ -125,4 +170,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

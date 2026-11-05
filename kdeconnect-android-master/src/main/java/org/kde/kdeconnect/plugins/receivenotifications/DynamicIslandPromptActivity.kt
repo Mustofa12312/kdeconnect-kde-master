@@ -151,6 +151,10 @@ class DynamicIslandPromptActivity : AppCompatActivity() {
         wlp.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_DIM_BEHIND
         window.attributes = wlp
+        setFinishOnTouchOutside(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+        }
     }
 
     private fun parseActions(raw: List<String>): List<PromptActionItem> {
@@ -273,8 +277,12 @@ fun DynamicIslandContent(
 
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 6.dp),
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
         contentAlignment = Alignment.TopCenter
     ) {
         AnimatedVisibility(
