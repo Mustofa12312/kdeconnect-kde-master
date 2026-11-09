@@ -8,10 +8,13 @@
 #include "sendreplydialog.h"
 
 #include <QBoxLayout>
+#include <QCloseEvent>
 #include <QCursor>
+#include <QEasingCurve>
 #include <QEnterEvent>
 #include <QFile>
 #include <QFrame>
+#include <QGraphicsDropShadowEffect>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QKeyEvent>
@@ -19,6 +22,8 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
+#include <QParallelAnimationGroup>
+#include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScreen>
 #include <QTimer>
@@ -82,28 +87,36 @@ void SendReplyDialog::initUi(const QString &originalMessage,
 
     auto mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(16, 16, 16, 16);
-    mainLayout->setSpacing(10);
+    mainLayout->setSpacing(0);
 
     // =========================================================================
-    // CARD 1: Modern Glassmorphic Notification / Call Card
+    // UNIFIED LUXURY GLASSMORPHIC NOTIFICATION & REPLY CARD
     // =========================================================================
-    auto card1 = new QFrame(this);
-    card1->setStyleSheet(QStringLiteral(
-        "QFrame {"
-        "  background-color: #1e1b2e;"
-        "  border: 1px solid rgba(255, 255, 255, 0.15);"
-        "  border-radius: 16px;"
+    auto card = new QFrame(this);
+    card->setObjectName(QStringLiteral("mainCard"));
+    card->setStyleSheet(QStringLiteral(
+        "QFrame#mainCard {"
+        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e1b30, stop:1 #131120);"
+        "  border: 1px solid rgba(255, 255, 255, 0.14);"
+        "  border-radius: 20px;"
         "}"
     ));
-    auto card1Layout = new QVBoxLayout(card1);
-    card1Layout->setContentsMargins(16, 14, 16, 14);
-    card1Layout->setSpacing(12);
 
-    // 1.1 Header Row: App Icon + App Name + Chip + Timestamp/Status + Close 'x'
+    auto shadow = new QGraphicsDropShadowEffect(card);
+    shadow->setBlurRadius(28);
+    shadow->setColor(QColor(0, 0, 0, 160));
+    shadow->setOffset(0, 8);
+    card->setGraphicsEffect(shadow);
+
+    auto cardLayout = new QVBoxLayout(card);
+    cardLayout->setContentsMargins(18, 14, 18, 16);
+    cardLayout->setSpacing(12);
+
+    // 1. Header Row: App Icon + App Name + Chip + Timestamp/Status + Close 'x'
     auto headerLayout = new QHBoxLayout();
     headerLayout->setSpacing(8);
 
-    auto appIconLabel = new QLabel(card1);
+    auto appIconLabel = new QLabel(card);
     appIconLabel->setFixedSize(22, 22);
     appIconLabel->setStyleSheet(topicName.contains(QLatin1String("WhatsApp"), Qt::CaseInsensitive)
         ? QStringLiteral("background-color: #25D366; border-radius: 6px; border: none;")
@@ -112,12 +125,12 @@ void SendReplyDialog::initUi(const QString &originalMessage,
     appIconLabel->setPixmap(QIcon::fromTheme(m_isCall ? QStringLiteral("call-start") : QStringLiteral("kdeconnect")).pixmap(14, 14));
     headerLayout->addWidget(appIconLabel);
 
-    auto appNameLabel = new QLabel(topicName, card1);
+    auto appNameLabel = new QLabel(topicName, card);
     appNameLabel->setStyleSheet(QStringLiteral("color: #ffffff; font-weight: bold; font-size: 11pt; border: none; background: transparent;"));
     headerLayout->addWidget(appNameLabel);
 
     if (m_isCall) {
-        auto callChip = new QLabel(i18nc("@info:status", "Panggilan Suara Masuk"), card1);
+        auto callChip = new QLabel(i18nc("@info:status", "Panggilan Suara Masuk"), card);
         callChip->setStyleSheet(QStringLiteral(
             "color: #4ade80;"
             "background-color: rgba(34, 197, 94, 0.18);"
@@ -129,7 +142,7 @@ void SendReplyDialog::initUi(const QString &originalMessage,
         ));
         headerLayout->addWidget(callChip);
     } else {
-        auto viaChip = new QLabel(QStringLiteral("via KDE Connect"), card1);
+        auto viaChip = new QLabel(QStringLiteral("via KDE Connect"), card);
         viaChip->setStyleSheet(QStringLiteral(
             "color: rgba(255, 255, 255, 0.65);"
             "background-color: rgba(255, 255, 255, 0.08);"
@@ -144,16 +157,16 @@ void SendReplyDialog::initUi(const QString &originalMessage,
     headerLayout->addStretch();
 
     if (m_isCall) {
-        m_statusLabel = new QLabel(i18nc("@info:status", "Sedang Berdering..."), card1);
+        m_statusLabel = new QLabel(i18nc("@info:status", "Sedang Berdering..."), card);
         m_statusLabel->setStyleSheet(QStringLiteral("color: #86efac; font-weight: bold; font-size: 9.5pt; border: none; background: transparent;"));
         headerLayout->addWidget(m_statusLabel);
     } else {
-        auto timeLabel = new QLabel(i18nc("@info:status", "Baru saja"), card1);
+        auto timeLabel = new QLabel(i18nc("@info:status", "Baru saja"), card);
         timeLabel->setStyleSheet(QStringLiteral("color: rgba(255, 255, 255, 0.5); font-size: 9pt; border: none; background: transparent;"));
         headerLayout->addWidget(timeLabel);
     }
 
-    auto closeBtn = new QPushButton(QStringLiteral("x"), card1);
+    auto closeBtn = new QPushButton(QStringLiteral("x"), card);
     closeBtn->setFixedSize(22, 22);
     closeBtn->setStyleSheet(QStringLiteral(
         "QPushButton {"
@@ -166,16 +179,16 @@ void SendReplyDialog::initUi(const QString &originalMessage,
         "}"
         "QPushButton:hover { background: rgba(255, 255, 255, 0.2); color: #ffffff; }"
     ));
-    connect(closeBtn, &QPushButton::clicked, this, &QWidget::close);
+    connect(closeBtn, &QPushButton::clicked, this, &SendReplyDialog::animateClose);
     headerLayout->addWidget(closeBtn);
 
-    card1Layout->addLayout(headerLayout);
+    cardLayout->addLayout(headerLayout);
 
-    // 1.2 Body Row: Avatar Circle + Message/Caller Text
+    // 2. Body Row: Avatar Circle + Message/Caller Text
     auto bodyLayout = new QHBoxLayout();
     bodyLayout->setSpacing(12);
 
-    auto avatarLabel = new QLabel(card1);
+    auto avatarLabel = new QLabel(card);
     avatarLabel->setFixedSize(48, 48);
     avatarLabel->setStyleSheet(QStringLiteral("border: none; background: transparent;"));
 
@@ -209,28 +222,27 @@ void SendReplyDialog::initUi(const QString &originalMessage,
     auto textLayout = new QVBoxLayout();
     textLayout->setSpacing(2);
 
-    auto senderLabel = new QLabel(cleanSender, card1);
+    auto senderLabel = new QLabel(cleanSender, card);
     senderLabel->setStyleSheet(QStringLiteral("color: #ffffff; font-weight: bold; font-size: 13pt; border: none; background: transparent;"));
     textLayout->addWidget(senderLabel);
 
     const QString displayMessage = m_isCall
         ? (cleanMessage.isEmpty() ? i18nc("@info:status", "Panggilan suara masuk") : cleanMessage)
         : cleanMessage;
-    m_messageLabel = new QLabel(displayMessage, card1);
+    m_messageLabel = new QLabel(displayMessage, card);
     m_messageLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 10pt; border: none; background: transparent;"));
     m_messageLabel->setWordWrap(true);
     textLayout->addWidget(m_messageLabel);
 
     bodyLayout->addLayout(textLayout, 1);
-    card1Layout->addLayout(bodyLayout);
+    cardLayout->addLayout(bodyLayout);
 
-    // 1.3 Actions Row: WhatsApp Call actions OR Notification quick actions
+    // 3. Actions Row
     auto actionLayout = new QHBoxLayout();
     actionLayout->setSpacing(8);
 
     if (m_isCall) {
-        // Red Tolak button
-        m_declineBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-stop")), i18nc("@action:button", "Tolak"), card1);
+        m_declineBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-stop")), i18nc("@action:button", "Tolak"), card);
         m_declineBtn->setStyleSheet(QStringLiteral(
             "QPushButton {"
             "  color: #ffffff;"
@@ -250,14 +262,12 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             } else {
                 Q_EMIT dismissRequested();
             }
-            close();
+            animateClose();
         });
         actionLayout->addWidget(m_declineBtn);
-
         actionLayout->addStretch();
 
-        // Green Angkat button
-        m_answerBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-start")), i18nc("@action:button", "Angkat"), card1);
+        m_answerBtn = new QPushButton(QIcon::fromTheme(QStringLiteral("call-start")), i18nc("@action:button", "Angkat"), card);
         m_answerBtn->setStyleSheet(QStringLiteral(
             "QPushButton {"
             "  color: #ffffff;"
@@ -278,86 +288,9 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             setCallConnected();
         });
         actionLayout->addWidget(m_answerBtn);
-    } else if (!m_actions.isEmpty()) {
-        bool hasReplyBtn = false;
-        int actionCount = 0;
-        for (const QString &action : std::as_const(m_actions)) {
-            if (actionCount >= 3) {
-                break;
-            }
-            const QString lowerAction = action.toLower();
-            const bool isReply = lowerAction.contains(QLatin1String("reply")) || lowerAction.contains(QLatin1String("balas"));
-
-            auto actionBtn = new QPushButton(action, card1);
-            if (isReply) {
-                hasReplyBtn = true;
-                actionBtn->setStyleSheet(QStringLiteral(
-                    "QPushButton {"
-                    "  color: #ffffff;"
-                    "  background: #2563eb;"
-                    "  border: none;"
-                    "  border-radius: 12px;"
-                    "  padding: 6px 18px;"
-                    "  font-weight: bold;"
-                    "  font-size: 9.5pt;"
-                    "}"
-                    "QPushButton:hover { background: #3b82f6; }"
-                    "QPushButton:pressed { background: #1d4ed8; }"
-                ));
-                connect(actionBtn, &QPushButton::clicked, this, [this]() {
-                    if (m_replyInput) {
-                        m_replyInput->setFocus();
-                    }
-                });
-            } else {
-                actionBtn->setStyleSheet(QStringLiteral(
-                    "QPushButton {"
-                    "  color: #e2e8f0;"
-                    "  background: rgba(255, 255, 255, 0.08);"
-                    "  border: 1px solid rgba(255, 255, 255, 0.1);"
-                    "  border-radius: 12px;"
-                    "  padding: 6px 14px;"
-                    "  font-size: 9.5pt;"
-                    "}"
-                    "QPushButton:hover { background: rgba(255, 255, 255, 0.14); }"
-                    "QPushButton:pressed { background: rgba(255, 255, 255, 0.2); }"
-                ));
-                connect(actionBtn, &QPushButton::clicked, this, [this, action]() {
-                    Q_EMIT actionTriggered(action);
-                    close();
-                });
-            }
-            actionLayout->addWidget(actionBtn);
-            actionCount++;
-        }
-
-        if (!m_replyId.isEmpty() && !hasReplyBtn) {
-            actionLayout->addStretch();
-            auto replyBtn = new QPushButton(i18nc("@action:button", "Balas"), card1);
-            replyBtn->setStyleSheet(QStringLiteral(
-                "QPushButton {"
-                "  color: #ffffff;"
-                "  background: #2563eb;"
-                "  border: none;"
-                "  border-radius: 12px;"
-                "  padding: 6px 20px;"
-                "  font-weight: bold;"
-                "  font-size: 10pt;"
-                "}"
-                "QPushButton:hover { background: #3b82f6; }"
-                "QPushButton:pressed { background: #1d4ed8; }"
-            ));
-            connect(replyBtn, &QPushButton::clicked, this, [this]() {
-                if (m_replyInput) {
-                    m_replyInput->setFocus();
-                }
-            });
-            actionLayout->addWidget(replyBtn);
-        } else {
-            actionLayout->addStretch();
-        }
+        cardLayout->addLayout(actionLayout);
     } else {
-        auto markReadBtn = new QPushButton(i18nc("@action:button", "Tandai sudah dibaca"), card1);
+        auto markReadBtn = new QPushButton(i18nc("@action:button", "Tandai sudah dibaca"), card);
         markReadBtn->setStyleSheet(QStringLiteral(
             "QPushButton {"
             "  color: #e2e8f0;"
@@ -371,11 +304,11 @@ void SendReplyDialog::initUi(const QString &originalMessage,
         ));
         connect(markReadBtn, &QPushButton::clicked, this, [this]() {
             Q_EMIT dismissRequested();
-            close();
+            animateClose();
         });
         actionLayout->addWidget(markReadBtn);
 
-        auto muteBtn = new QPushButton(i18nc("@action:button", "Senyapkan"), card1);
+        auto muteBtn = new QPushButton(i18nc("@action:button", "Senyapkan"), card);
         muteBtn->setStyleSheet(QStringLiteral(
             "QPushButton {"
             "  color: #e2e8f0;"
@@ -387,77 +320,48 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             "}"
             "QPushButton:hover { background: rgba(255, 255, 255, 0.14); }"
         ));
-        connect(muteBtn, &QPushButton::clicked, this, &QWidget::close);
+        connect(muteBtn, &QPushButton::clicked, this, &SendReplyDialog::animateClose);
         actionLayout->addWidget(muteBtn);
 
-        actionLayout->addStretch();
-
-        if (!m_replyId.isEmpty()) {
-            auto replyBtn = new QPushButton(i18nc("@action:button", "Balas"), card1);
-            replyBtn->setStyleSheet(QStringLiteral(
+        for (const QString &action : std::as_const(m_actions)) {
+            const QString lowerAction = action.toLower();
+            if (lowerAction.contains(QLatin1String("reply")) || lowerAction.contains(QLatin1String("balas"))) {
+                continue;
+            }
+            auto actionBtn = new QPushButton(action, card);
+            actionBtn->setStyleSheet(QStringLiteral(
                 "QPushButton {"
-                "  color: #ffffff;"
-                "  background: #2563eb;"
-                "  border: none;"
+                "  color: #e2e8f0;"
+                "  background: rgba(255, 255, 255, 0.08);"
+                "  border: 1px solid rgba(255, 255, 255, 0.1);"
                 "  border-radius: 12px;"
-                "  padding: 6px 20px;"
-                "  font-weight: bold;"
-                "  font-size: 10pt;"
+                "  padding: 6px 14px;"
+                "  font-size: 9.5pt;"
                 "}"
-                "QPushButton:hover { background: #3b82f6; }"
-                "QPushButton:pressed { background: #1d4ed8; }"
+                "QPushButton:hover { background: rgba(255, 255, 255, 0.14); }"
             ));
-            connect(replyBtn, &QPushButton::clicked, this, [this]() {
-                if (m_replyInput) {
-                    m_replyInput->setFocus();
-                }
+            connect(actionBtn, &QPushButton::clicked, this, [this, action]() {
+                Q_EMIT actionTriggered(action);
+                animateClose();
             });
-            actionLayout->addWidget(replyBtn);
+            actionLayout->addWidget(actionBtn);
         }
+
+        actionLayout->addStretch();
+        cardLayout->addLayout(actionLayout);
     }
 
-    card1Layout->addLayout(actionLayout);
-    mainLayout->addWidget(card1);
-
-    // =========================================================================
-    // CARD 2: Quick Reply Card (Directly underneath Card 1)
-    // =========================================================================
+    // 4. Quick Reply Section (Integrated seamlessly in the same card)
     if (!m_replyId.isEmpty() && !m_isCall) {
-        auto card2 = new QFrame(this);
-        card2->setStyleSheet(QStringLiteral(
-            "QFrame {"
-            "  background-color: #191627;"
-            "  border: 1px solid rgba(255, 255, 255, 0.12);"
-            "  border-radius: 16px;"
-            "}"
-        ));
-        auto card2Layout = new QVBoxLayout(card2);
-        card2Layout->setContentsMargins(16, 12, 16, 12);
-        card2Layout->setSpacing(10);
+        auto divider = new QFrame(card);
+        divider->setFixedHeight(1);
+        divider->setStyleSheet(QStringLiteral("background-color: rgba(255, 255, 255, 0.08); border: none;"));
+        cardLayout->addWidget(divider);
 
-        auto replyHeaderLayout = new QHBoxLayout();
-        replyHeaderLayout->setSpacing(6);
+        auto replyRowLayout = new QHBoxLayout();
+        replyRowLayout->setSpacing(8);
 
-        auto blueDot = new QLabel(QStringLiteral("*"), card2);
-        blueDot->setStyleSheet(QStringLiteral("color: #3b82f6; font-size: 12pt; font-weight: bold; border: none; background: transparent;"));
-        replyHeaderLayout->addWidget(blueDot);
-
-        auto replyHeaderLabel = new QLabel(i18nc("@title", "Balasan Cepat ke %1", cleanSender), card2);
-        replyHeaderLabel->setStyleSheet(QStringLiteral("color: #ffffff; font-weight: bold; font-size: 10.5pt; border: none; background: transparent;"));
-        replyHeaderLayout->addWidget(replyHeaderLabel);
-
-        replyHeaderLayout->addStretch();
-
-        auto replyAppLabel = new QLabel(topicName, card2);
-        replyAppLabel->setStyleSheet(QStringLiteral("color: rgba(255, 255, 255, 0.4); font-size: 9pt; border: none; background: transparent;"));
-        replyHeaderLayout->addWidget(replyAppLabel);
-
-        card2Layout->addLayout(replyHeaderLayout);
-
-        auto inputRowLayout = new QHBoxLayout();
-        inputRowLayout->setSpacing(8);
-
-        m_replyInput = new QLineEdit(card2);
+        m_replyInput = new QLineEdit(card);
         m_replyInput->setPlaceholderText(i18nc("@info:placeholder", "Iya, ada apa?"));
         m_replyInput->setStyleSheet(QStringLiteral(
             "QLineEdit {"
@@ -465,42 +369,56 @@ void SendReplyDialog::initUi(const QString &originalMessage,
             "  color: #ffffff;"
             "  border: 1px solid rgba(255, 255, 255, 0.12);"
             "  border-radius: 12px;"
-            "  padding: 8px 12px;"
+            "  padding: 8px 14px;"
             "  font-size: 10pt;"
             "}"
             "QLineEdit:focus {"
+            "  background-color: rgba(255, 255, 255, 0.09);"
             "  border: 1.5px solid #3b82f6;"
             "}"
         ));
-        inputRowLayout->addWidget(m_replyInput, 1);
+        replyRowLayout->addWidget(m_replyInput, 1);
 
-        auto sendBtn = new QPushButton(i18nc("@action:button", "Kirim"), card2);
+        auto sendBtn = new QPushButton(i18nc("@action:button", "Kirim"), card);
         sendBtn->setStyleSheet(QStringLiteral(
             "QPushButton {"
-            "  background-color: #2563eb;"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563eb, stop:1 #3b82f6);"
             "  color: #ffffff;"
             "  font-weight: bold;"
             "  border: none;"
-            "  border-radius: 10px;"
+            "  border-radius: 12px;"
             "  padding: 8px 22px;"
             "  font-size: 10pt;"
             "}"
-            "QPushButton:hover { background-color: #3b82f6; }"
-            "QPushButton:pressed { background-color: #1d4ed8; }"
+            "QPushButton:hover { background: #3b82f6; }"
+            "QPushButton:pressed { background: #1d4ed8; }"
         ));
-        const auto onSend = [this]() {
+
+        const auto onSend = [this, sendBtn]() {
             const QString text = m_replyInput->text().trimmed();
             if (!text.isEmpty()) {
                 Q_EMIT sendReply(m_replyId, text);
+                sendBtn->setText(QStringLiteral("OK"));
+                sendBtn->setStyleSheet(QStringLiteral(
+                    "QPushButton {"
+                    "  background-color: #16a34a;"
+                    "  color: #ffffff;"
+                    "  font-weight: bold;"
+                    "  border: none;"
+                    "  border-radius: 12px;"
+                    "  padding: 8px 18px;"
+                    "  font-size: 10pt;"
+                    "}"
+                ));
             }
-            close();
+            animateClose();
         };
+
         connect(sendBtn, &QPushButton::clicked, this, onSend);
         connect(m_replyInput, &QLineEdit::returnPressed, this, onSend);
-        inputRowLayout->addWidget(sendBtn);
+        replyRowLayout->addWidget(sendBtn);
 
-        card2Layout->addLayout(inputRowLayout);
-        mainLayout->addWidget(card2);
+        cardLayout->addLayout(replyRowLayout);
 
         connect(m_replyInput, &QLineEdit::textChanged, this, [this](const QString &text) {
             if (!text.isEmpty() && m_autoCloseTimer) {
@@ -509,11 +427,13 @@ void SendReplyDialog::initUi(const QString &originalMessage,
         });
     }
 
+    mainLayout->addWidget(card);
+
     // Auto dismiss timer for regular notifications (8 seconds)
     if (!m_isCall) {
         m_autoCloseTimer = new QTimer(this);
         m_autoCloseTimer->setSingleShot(true);
-        connect(m_autoCloseTimer, &QTimer::timeout, this, &QWidget::close);
+        connect(m_autoCloseTimer, &QTimer::timeout, this, &SendReplyDialog::animateClose);
         m_autoCloseTimer->start(8000);
     }
 
@@ -534,16 +454,106 @@ void SendReplyDialog::positionUnderClock()
     }
     if (screen) {
         const QRect geom = screen->geometry();
-        const int targetX = geom.x() + (geom.width() - 520) / 2;
+        const int targetX = geom.x() + (geom.width() - width()) / 2;
         const int targetY = geom.y() + 38;
         move(targetX, targetY);
     }
 }
 
+void SendReplyDialog::animateShow()
+{
+    if (m_isClosing) {
+        return;
+    }
+
+    setFixedWidth(520);
+    adjustSize();
+
+    QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (!screen) {
+        return;
+    }
+
+    const QRect geom = screen->geometry();
+    const int targetX = geom.x() + (geom.width() - width()) / 2;
+    const int targetY = geom.y() + 38;
+    const QPoint endPos(targetX, targetY);
+    const QPoint startPos(targetX, targetY - 45);
+
+    move(startPos);
+    setWindowOpacity(0.0);
+
+    auto animPos = new QPropertyAnimation(this, "pos", this);
+    animPos->setDuration(320);
+    animPos->setStartValue(startPos);
+    animPos->setEndValue(endPos);
+    animPos->setEasingCurve(QEasingCurve::OutBack);
+
+    auto animOpacity = new QPropertyAnimation(this, "windowOpacity", this);
+    animOpacity->setDuration(260);
+    animOpacity->setStartValue(0.0);
+    animOpacity->setEndValue(1.0);
+
+    auto group = new QParallelAnimationGroup(this);
+    group->addAnimation(animPos);
+    group->addAnimation(animOpacity);
+    group->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+void SendReplyDialog::animateClose()
+{
+    if (m_isClosing) {
+        return;
+    }
+    m_isClosing = true;
+
+    if (m_autoCloseTimer) {
+        m_autoCloseTimer->stop();
+    }
+    if (m_callDurationTimer) {
+        m_callDurationTimer->stop();
+    }
+
+    const QPoint curPos = pos();
+    const QPoint endPos(curPos.x(), curPos.y() - 35);
+
+    auto animPos = new QPropertyAnimation(this, "pos", this);
+    animPos->setDuration(220);
+    animPos->setStartValue(curPos);
+    animPos->setEndValue(endPos);
+    animPos->setEasingCurve(QEasingCurve::InCubic);
+
+    auto animOpacity = new QPropertyAnimation(this, "windowOpacity", this);
+    animOpacity->setDuration(200);
+    animOpacity->setStartValue(windowOpacity());
+    animOpacity->setEndValue(0.0);
+
+    auto group = new QParallelAnimationGroup(this);
+    group->addAnimation(animPos);
+    group->addAnimation(animOpacity);
+    connect(group, &QParallelAnimationGroup::finished, this, [this]() {
+        QDialog::close();
+    });
+    group->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
 void SendReplyDialog::showEvent(QShowEvent *event)
 {
     QDialog::showEvent(event);
-    positionUnderClock();
+    animateShow();
+}
+
+void SendReplyDialog::closeEvent(QCloseEvent *event)
+{
+    if (!m_isClosing) {
+        event->ignore();
+        animateClose();
+    } else {
+        event->accept();
+    }
 }
 
 void SendReplyDialog::enterEvent(QEnterEvent *event)
@@ -567,18 +577,18 @@ void SendReplyDialog::leaveEvent(QEvent *event)
 QSize SendReplyDialog::sizeHint() const
 {
     if (m_isCall) {
-        return QSize(520, 170);
+        return QSize(520, 160);
     }
     if (m_replyId.isEmpty()) {
-        return QSize(520, 140);
+        return QSize(520, 130);
     }
-    return QSize(520, 250);
+    return QSize(520, 190);
 }
 
 void SendReplyDialog::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {
-        close();
+        animateClose();
         event->accept();
         return;
     }

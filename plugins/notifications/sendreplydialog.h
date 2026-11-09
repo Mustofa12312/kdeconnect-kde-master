@@ -38,6 +38,8 @@ public:
 
 public Q_SLOTS:
     void setCallConnected();
+    void animateClose();
+    void animateShow();
 
 Q_SIGNALS:
     void sendReply(const QString &replyId, const QString &messageBody);
@@ -49,6 +51,7 @@ protected:
     void enterEvent(QEnterEvent *event) override;
     void leaveEvent(QEvent *event) override;
     void showEvent(QShowEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     void initUi(const QString &originalMessage,
@@ -76,6 +79,7 @@ private:
     QTimer *m_autoCloseTimer = nullptr;
     QTimer *m_callDurationTimer = nullptr;
     int m_callDurationSeconds = 0;
+    bool m_isClosing = false;
 
     static QPointer<SendReplyDialog> s_currentInstance;
 };
