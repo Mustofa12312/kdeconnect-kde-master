@@ -60,8 +60,13 @@ void Notification::show()
 {
     m_ready = true;
     Q_EMIT ready();
-    if (m_notification) {
-        m_notification->sendEvent();
+    // When a GUI display is present, NotificationsPlugin displays our custom
+    // top-center glassmorphic overlay (SendReplyDialog). We suppress the GNOME system
+    // popup to prevent duplicate overlapping banners.
+    if (qEnvironmentVariableIsEmpty("DISPLAY") && qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+        if (m_notification) {
+            m_notification->sendEvent();
+        }
     }
 }
 
