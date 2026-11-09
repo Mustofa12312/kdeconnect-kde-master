@@ -23,3 +23,4 @@ find "$INCOMING_DIR" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o
             "Berhasil disimpan ke folder proyek:\n$fname"
     fi
 done
+

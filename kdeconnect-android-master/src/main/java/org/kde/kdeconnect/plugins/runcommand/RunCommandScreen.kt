@@ -1,6 +1,8 @@
 package org.kde.kdeconnect.plugins.runcommand
 
 import androidx.activity.OnBackPressedDispatcher
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -9,19 +11,28 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -57,6 +69,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -154,80 +167,61 @@ fun RunCommandScreen(
             }
 
             if (!commandList.isEmpty()) {
-                LazyColumn(
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
                     modifier = Modifier
                         .padding(it)
                         .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (showOutputCard) {
-                        item {
+                        item(span = { GridItemSpan(2) }) {
                             OutputCard(outputList, plugin)
                         }
                     }
-                    items(commandList) { command ->
-                        var menuExpanded by remember { mutableStateOf(false) }
-                        var pressOffset by remember { mutableStateOf(IntOffset.Zero) }
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .pointerInput(command.key) {
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(
-                                                requireUnconsumed = false,
-                                                pass = PointerEventPass.Initial,
-                                            )
-                                            pressOffset = IntOffset(
-                                                down.position.x.toInt(),
-                                                down.position.y.toInt(),
-                                            )
-                                        }
-                                    }
-                                    .combinedClickable(
-                                        indication = ripple(),
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        onClick = { plugin.runCommand(command.key) },
-                                        onLongClick = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            menuExpanded = true
-                                        }
-                                    )
-                            ) {
-                                Column(
+
+                    // Top banner: Stream Deck Macropad mode
+                    item(span = { GridItemSpan(2) }) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF201B35))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                                ) {
-                                    Text(
-                                        text = command.name,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = command.command,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = Color.Gray,
-                                    )
-                                }
+                                        .clip(CircleShape)
+                                        .background(if (isReachable) Color(0xFF22C55E) else Color(0xFFEF4444))
+                                        .padding(4.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Stream Deck Macropad",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
                             }
-                            Box(modifier = Modifier.offset { pressOffset }) {
-                                DropdownMenu(
-                                    expanded = menuExpanded,
-                                    onDismissRequest = { menuExpanded = false },
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.copy_url_to_clipboard)) },
-                                        onClick = {
-                                            menuExpanded = false
-                                            onCopyUrlToClipboard(command)
-                                        },
-                                    )
-                                }
-                            }
+                            Text(
+                                text = "${commandList.size} Tombol Aktif",
+                                color = Color(0x99CBD5E1),
+                                fontSize = 11.sp
+                            )
                         }
+                    }
+
+                    items(commandList) { command ->
+                        StreamDeckItemCard(
+                            command = command,
+                            onRunCommand = { plugin.runCommand(command.key) },
+                            onCopyUrlToClipboard = onCopyUrlToClipboard
+                        )
                     }
                 }
             } else {
@@ -247,6 +241,153 @@ fun RunCommandScreen(
             }
 
             DeviceDisconnectedOverlay(device, Modifier.padding(it))
+        }
+    }
+}
+
+@Composable
+private fun StreamDeckItemCard(
+    command: CommandEntry,
+    onRunCommand: () -> Unit,
+    onCopyUrlToClipboard: (CommandEntry) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalHapticFeedback.current
+    var menuExpanded by remember { mutableStateOf(false) }
+    var pressOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var isPressedFlash by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isPressedFlash) {
+        if (isPressedFlash) {
+            delay(300)
+            isPressedFlash = false
+        }
+    }
+
+    val nameLower = command.name.lowercase()
+    val cmdLower = command.command.lowercase()
+    val (badgeText, badgeColor, cardBorder) = when {
+        "git" in nameLower || "git" in cmdLower -> Triple("GIT", Color(0xFFF97316), Color(0x66F97316))
+        "lock" in nameLower || "kunci" in nameLower -> Triple("LOCK", Color(0xFFF43F5E), Color(0x66F43F5E))
+        "auth" in nameLower || "sidik" in nameLower -> Triple("AUTH", Color(0xFFFBBF24), Color(0x66FBBF24))
+        "dev" in nameLower || "build" in nameLower || "daemon" in nameLower || "server" in nameLower -> Triple("DEV", Color(0xFF06B6D4), Color(0x6606B6D4))
+        "audio" in nameLower || "mute" in nameLower || "sound" in nameLower -> Triple("AUDIO", Color(0xFFA855F7), Color(0x66A855F7))
+        "webcam" in nameLower || "cam" in nameLower || "camera" in nameLower -> Triple("CAM", Color(0xFFEC4899), Color(0x66EC4899))
+        "prox" in nameLower || "walk" in nameLower -> Triple("PROX", Color(0xFF10B981), Color(0x6610B981))
+        "term" in nameLower || "terminal" in nameLower -> Triple("TERM", Color(0xFF14B8A6), Color(0x6614B8A6))
+        else -> Triple("MACRO", Color(0xFF3B82F6), Color(0x663B82F6))
+    }
+
+    Box(modifier = modifier) {
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(
+                1.5.dp,
+                if (isPressedFlash) badgeColor else cardBorder
+            ),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isPressedFlash) Color(0xFF2C2448) else Color(0xFF181528)
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(130.dp)
+                .pointerInput(command.key) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(
+                            requireUnconsumed = false,
+                            pass = PointerEventPass.Initial,
+                        )
+                        pressOffset = IntOffset(
+                            down.position.x.toInt(),
+                            down.position.y.toInt(),
+                        )
+                    }
+                }
+                .combinedClickable(
+                    indication = ripple(),
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        isPressedFlash = true
+                        onRunCommand()
+                    },
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuExpanded = true
+                    }
+                )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(badgeColor.copy(alpha = 0.2f))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            color = badgeColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(badgeColor.copy(alpha = if (isPressedFlash) 1f else 0.4f))
+                            .padding(4.dp)
+                    )
+                }
+
+                Column {
+                    Text(
+                        text = command.name,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    Text(
+                        text = command.command,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = Color(0x88CBD5E1),
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+
+        Box(modifier = Modifier.offset { pressOffset }) {
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.copy_url_to_clipboard)) },
+                    onClick = {
+                        menuExpanded = false
+                        onCopyUrlToClipboard(command)
+                    },
+                )
+            }
         }
     }
 }
