@@ -11,6 +11,7 @@ import sys
 import time
 import subprocess
 import signal
+import threading
 
 DEVICE_ID = os.environ.get("KDECONNECT_DEVICE_ID", "3a7731f999984b4993982d7e403b7cdc")
 PHONE_IP = os.environ.get("KDECONNECT_PHONE_IP", "192.168.1.12")
@@ -103,6 +104,38 @@ def wake_screen():
     except Exception:
         pass
 
+def unlock_screen():
+    log("Pixel 8a verified unlock. Unlocking laptop session...")
+    try:
+        subprocess.run(["loginctl", "unlock-sessions"], check=False)
+    except Exception as e:
+        log(f"Error unlocking session: {e}")
+
+def send_unlock_prompt():
+    time.sleep(1)
+    if not is_session_locked():
+        log("Session not locked, skipping unlock prompt.")
+        return
+
+    log("Sending one-touch unlock prompt to Pixel 8a...")
+    prompt_cmd = [
+        "/home/mustofa/.gemini/antigravity/bin/kdeconnect-prompt",
+        "--title", "🚶‍♂️ Pixel 8a Terdeteksi di Meja",
+        "--body", "Layar laptop menyala menyambut Anda. Sentuh tombol di bawah untuk langsung membuka kunci laptop tanpa password.",
+        "--actions", "unlock:Buka Kunci Laptop (Unlock)", "dismiss:Abaikan",
+        "--device", DEVICE_ID,
+        "--timeout", "30"
+    ]
+    try:
+        proc = subprocess.run(prompt_cmd, stdout=subprocess.PIPE, text=True, timeout=35)
+        out = proc.stdout.strip()
+        if "unlock" in out.lower():
+            unlock_screen()
+        else:
+            log(f"Prompt result: {out}")
+    except Exception as e:
+        log(f"Unlock prompt error: {e}")
+
 def run_loop():
     log(f"Proximity Auto-Lock daemon active. Target: {PHONE_IP} ({DEVICE_ID}), Timeout: {TIMEOUT_SECONDS}s")
     absent_since = None
@@ -120,6 +153,8 @@ def run_loop():
                 if was_absent:
                     log("Pixel 8a reconnected. Welcome back!")
                     wake_screen()
+                    if is_session_locked():
+                        threading.Thread(target=send_unlock_prompt, daemon=True).start()
                     was_absent = False
                 absent_since = None
             else:
@@ -217,6 +252,17 @@ def print_status():
     print(f"Laptop Session Locked: {'YES' if locked else 'NO'}")
     print(f"Timeout Threshold: {TIMEOUT_SECONDS} seconds")
 
+def test_simulation():
+    print("=== Simulasi Proximity Auto-Lock & Auto-Wake ===")
+    print("1. Mengunci layar laptop seketika...")
+    lock_screen()
+    print("2. Layar laptop terkunci. Menunggu 5 detik (simulasi Anda kembali ke meja)...")
+    time.sleep(5)
+    print("3. Membangunkan layar laptop...")
+    wake_screen()
+    print("4. Mengirim kartu sentuh Buka Kunci ke Pixel 8a...")
+    send_unlock_prompt()
+
 def main():
     action = sys.argv[1] if len(sys.argv) > 1 else "status"
     if action == "start":
@@ -233,8 +279,10 @@ def main():
         toggle_service()
     elif action == "status":
         print_status()
+    elif action in ("test", "simulate"):
+        test_simulation()
     else:
-        print("Penggunaan: kdeconnect-proximity [start|stop|restart|toggle|status]")
+        print("Penggunaan: kdeconnect-proximity [start|stop|restart|toggle|status|test]")
 
 if __name__ == "__main__":
     main()
