@@ -113,6 +113,24 @@ class DynamicIslandPromptActivity : AppCompatActivity() {
 
         val actionItems = parseActions(rawActions)
 
+        // Cancel status bar notification so it doesn't collide with Dynamic Island
+        val nm = getSystemService<NotificationManager>()
+        val intId = try { notificationId.toInt() } catch (e: Exception) { notificationId.hashCode() }
+        nm?.cancel("kdeconnectId:$notificationId", intId)
+
+        // Haptic feedback when Dynamic Island drops down
+        try {
+            val vibrator = getSystemService<Vibrator>()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(30)
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+
         // Register dismiss receiver
         val filter = IntentFilter(NotificationActionReceiver.ACTION_DISMISS_DYNAMIC_ISLAND)
         ContextCompat.registerReceiver(

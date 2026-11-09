@@ -97,6 +97,9 @@ class ReceiveNotificationsPlugin : Plugin() {
 
         val notificationManager = context.getSystemService<NotificationManager>() ?: return true
 
+        val powerManager = context.getSystemService<PowerManager>()
+        val isInteractive = powerManager?.isInteractive == true
+
         val channelId = if (isPrompt) {
             NotificationHelper.Channels.HIGHPRIORITY
         } else {
@@ -117,10 +120,6 @@ class ReceiveNotificationsPlugin : Plugin() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(ticker))
 
         if (isPrompt) {
-            notiBuilder.setColor(0xFF007AFF.toInt()) // Apple iOS Blue Accent
-            notiBuilder.priority = NotificationCompat.PRIORITY_MAX
-            notiBuilder.setCategory(NotificationCompat.CATEGORY_REMINDER)
-
             val actionsArrayList = ArrayList(actionsList ?: emptyList())
             val promptIntent = DynamicIslandPromptActivity.getIntent(
                 context = context,
@@ -131,6 +130,27 @@ class ReceiveNotificationsPlugin : Plugin() {
                 body = text,
                 actions = actionsArrayList
             )
+
+            // If phone screen is currently ON/in-use, launch Dynamic Island prompt directly
+            // and do NOT post a system notification banner to eliminate collision!
+            var startedDynamicIsland = false
+            if (isInteractive) {
+                try {
+                    context.startActivity(promptIntent)
+                    startedDynamicIsland = true
+                } catch (e: Exception) {
+                    Log.w("NotificationsPlugin", "Failed to start DynamicIslandPromptActivity directly", e)
+                }
+            }
+
+            if (startedDynamicIsland) {
+                return true
+            }
+
+            // Fallback or Screen is OFF/Locked: show high-priority lockscreen notification
+            notiBuilder.setColor(0xFF007AFF.toInt()) // Apple iOS Blue Accent
+            notiBuilder.priority = NotificationCompat.PRIORITY_MAX
+            notiBuilder.setCategory(NotificationCompat.CATEGORY_REMINDER)
 
             val promptPendingIntent = PendingIntent.getActivity(
                 context,
@@ -167,17 +187,6 @@ class ReceiveNotificationsPlugin : Plugin() {
                 notiBuilder.addAction(0, "Allow Once", NotificationActionReceiver.createPendingIntent(context, device.deviceId, id, "1", reqCode++))
                 notiBuilder.addAction(0, "Always Allow", NotificationActionReceiver.createPendingIntent(context, device.deviceId, id, "2", reqCode++))
                 notiBuilder.addAction(0, "Deny", NotificationActionReceiver.createPendingIntent(context, device.deviceId, id, "3", reqCode++))
-            }
-
-            // If phone screen is currently ON/in-use, launch Dynamic Island prompt directly
-            val powerManager = context.getSystemService<PowerManager>()
-            val isInteractive = powerManager?.isInteractive == true
-            if (isInteractive) {
-                try {
-                    context.startActivity(promptIntent)
-                } catch (e: Exception) {
-                    Log.w("NotificationsPlugin", "Failed to start DynamicIslandPromptActivity directly", e)
-                }
             }
         }
 
