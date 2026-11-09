@@ -13,6 +13,8 @@ import android.os.Build
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 
@@ -30,10 +32,13 @@ class NotificationReceiver : NotificationListenerService() {
     private val listeners = mutableListOf<NotificationListener>()
 
     fun addListener(listener: NotificationListener) {
-        listeners.add(listener)
+        synchronized(listeners) {
+            if (!listeners.contains(listener)) {
+                listeners.add(listener)
+            }
+        }
 
         if (isConnected) {
-            // onListenerConnected won't be called again by the system, so notify the new listener now
             listener.onListenerConnected(this)
         } else {
             requestRebindSafe()
@@ -41,7 +46,12 @@ class NotificationReceiver : NotificationListenerService() {
     }
 
     fun removeListener(listener: NotificationListener) {
-        if (listeners.remove(listener) && listeners.isEmpty()) {
+        val shouldUnbind: Boolean
+        synchronized(listeners) {
+            listeners.remove(listener)
+            shouldUnbind = listeners.isEmpty()
+        }
+        if (shouldUnbind) {
             requestUnbindSafe()
         }
     }
@@ -63,9 +73,10 @@ class NotificationReceiver : NotificationListenerService() {
             return
         }
 
-        // onListenerDisconnected() is only called from onDestroy(), and since this is a started service
-        // unbinding won't destroy it, so we have to track the disconnection ourselves.
         isConnected = false
+        if (instance == this) {
+            instance = null
+        }
         try {
             super.requestUnbind()
         } catch (_: Exception) {
@@ -74,46 +85,65 @@ class NotificationReceiver : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(statusBarNotification: StatusBarNotification) {
-        //Log.e("NotificationReceiver.onNotificationPosted", "listeners: ${listeners.size}")
-        for (listener in listeners) {
+        val currentListeners: List<NotificationListener>
+        synchronized(listeners) {
+            currentListeners = listeners.toList()
+        }
+        for (listener in currentListeners) {
             listener.onNotificationPosted(statusBarNotification)
         }
     }
 
     override fun onNotificationRemoved(statusBarNotification: StatusBarNotification) {
-        for (listener in listeners) {
+        val currentListeners: List<NotificationListener>
+        synchronized(listeners) {
+            currentListeners = listeners.toList()
+        }
+        for (listener in currentListeners) {
             listener.onNotificationRemoved(statusBarNotification)
         }
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        for (listener in listeners) {
+        instance = this
+        isConnected = true
+        drainCallbacks()
+
+        val currentListeners: List<NotificationListener>
+        synchronized(listeners) {
+            currentListeners = listeners.toList()
+        }
+        for (listener in currentListeners) {
             listener.onListenerConnected(this)
         }
-        isConnected = true
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         isConnected = false
+        if (instance == this) {
+            instance = null
+        }
 
-        if (listeners.isNotEmpty()) {
+        val hasListeners: Boolean
+        synchronized(listeners) {
+            hasListeners = listeners.isNotEmpty()
+        }
+        if (hasListeners) {
             requestRebindSafe()
         }
     }
 
-    // To use the service from the outer (name)space
-
-    fun interface InstanceCallback {
-        fun onServiceStart(service: NotificationReceiver)
+    override fun onDestroy() {
+        super.onDestroy()
+        isConnected = false
+        if (instance == this) {
+            instance = null
+        }
     }
 
-    // This will be called for each intent launch, even if the service is already started and is reused
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Log.e("NotificationReceiver", "onStartCommand")
-        // Drain a snapshot so callbacks can call RunCommand() without modifying the list while we iterate it.
-        // Callbacks added during dispatch are handled by the onStartCommand triggered by their own startService().
+    private fun drainCallbacks() {
         val pending: List<InstanceCallback>
         mutex.lock()
         try {
@@ -123,19 +153,42 @@ class NotificationReceiver : NotificationListenerService() {
             mutex.unlock()
         }
         for (c in pending) {
-            c.onServiceStart(this)
+            try {
+                c.onServiceStart(this)
+            } catch (e: Exception) {
+                Log.e("NotificationReceiver", "Error in onServiceStart", e)
+            }
         }
+    }
+
+    fun interface InstanceCallback {
+        fun onServiceStart(service: NotificationReceiver)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        instance = this
+        drainCallbacks()
         return START_STICKY
     }
 
     companion object {
-        // Reading notifications uses a different kind of permission, because it was added before the runtime permissions model
+        @Volatile
+        var instance: NotificationReceiver? = null
+            private set
+
         fun hasReadNotificationsPermission(context: Context): Boolean {
+            try {
+                val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(context)
+                if (enabledPackages.contains(context.packageName)) {
+                    return true
+                }
+            } catch (_: Exception) {}
+
             val notificationListenerList =
                 Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
                     ?: return false
             val thisComponentName = ComponentName(context, NotificationReceiver::class.java).flattenToString()
-            return notificationListenerList.contains(thisComponentName)
+            return notificationListenerList.contains(thisComponentName) || notificationListenerList.contains(context.packageName)
         }
 
         private val callbacks = ArrayList<InstanceCallback>()
@@ -146,6 +199,12 @@ class NotificationReceiver : NotificationListenerService() {
         }
 
         fun RunCommand(c: Context, callback: InstanceCallback?) {
+            val inst = instance
+            if (inst != null && inst.isConnected) {
+                callback?.onServiceStart(inst)
+                return
+            }
+
             if (callback != null) {
                 mutex.lock()
                 try {
@@ -154,8 +213,19 @@ class NotificationReceiver : NotificationListenerService() {
                     mutex.unlock()
                 }
             }
-            val serviceIntent = Intent(c, NotificationReceiver::class.java)
-            c.startService(serviceIntent)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && hasReadNotificationsPermission(c)) {
+                try {
+                    instance?.requestRebindSafe()
+                } catch (_: Exception) {}
+            }
+
+            try {
+                val serviceIntent = Intent(c, NotificationReceiver::class.java)
+                c.startService(serviceIntent)
+            } catch (e: Exception) {
+                Log.w("NotificationReceiver", "startService failed, waiting for OS to bind service", e)
+            }
         }
     }
 }
