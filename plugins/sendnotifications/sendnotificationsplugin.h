@@ -30,6 +30,7 @@ public:
 
 public Q_SLOTS:
     Q_SCRIPTABLE QString sendPrompt(const QString &title, const QString &text, const QStringList &actions);
+    Q_SCRIPTABLE void dismissPrompt(const QString &id);
 
 Q_SIGNALS:
     Q_SCRIPTABLE void actionInvoked(const QString &id, const QString &action);

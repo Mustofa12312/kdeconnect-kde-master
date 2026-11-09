@@ -91,7 +91,7 @@ class DynamicIslandPromptActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == NotificationActionReceiver.ACTION_DISMISS_DYNAMIC_ISLAND) {
                 val id = intent.getStringExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID)
-                if (id == null || id == notificationId) {
+                if (id == null || id.isEmpty() || id == notificationId) {
                     finish()
                 }
             }

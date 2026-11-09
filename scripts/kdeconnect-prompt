@@ -89,6 +89,7 @@ def main():
     phone_prompt_id = None
     desktop_notif_id = None
     desktop_iface = None
+    sendnotif_iface = None
 
     # Get desktop notification interface
     try:
@@ -104,6 +105,17 @@ def main():
             except Exception:
                 pass
 
+    def cleanup_phone_prompt():
+        if sendnotif_iface and phone_prompt_id:
+            try:
+                sendnotif_iface.dismissPrompt(str(phone_prompt_id))
+            except Exception:
+                pass
+
+    def cleanup_all():
+        cleanup_desktop_notification()
+        cleanup_phone_prompt()
+
     def on_phone_action(action_id, action_key):
         if phone_prompt_id is None or str(action_id) == str(phone_prompt_id):
             result["action"] = str(action_key)
@@ -113,7 +125,7 @@ def main():
     def on_desktop_action(nid, action_key):
         if desktop_notif_id is not None and int(nid) == int(desktop_notif_id):
             result["action"] = str(action_key)
-            cleanup_desktop_notification()
+            cleanup_all()
             loop.quit()
 
     # 1. Post to phone via KDE Connect if device reachable
@@ -165,7 +177,7 @@ def main():
     # Setup timeout
     def on_timeout():
         result["timed_out"] = True
-        cleanup_desktop_notification()
+        cleanup_all()
         loop.quit()
         return False
 
@@ -174,10 +186,10 @@ def main():
     try:
         loop.run()
     except KeyboardInterrupt:
-        cleanup_desktop_notification()
+        cleanup_all()
         return 130
 
-    cleanup_desktop_notification()
+    cleanup_all()
 
     if result["timed_out"]:
         return 4

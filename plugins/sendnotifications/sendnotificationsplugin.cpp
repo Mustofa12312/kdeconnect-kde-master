@@ -95,5 +95,16 @@ QString SendNotificationsPlugin::sendPrompt(const QString &title, const QString 
     return promptId;
 }
 
+void SendNotificationsPlugin::dismissPrompt(const QString &id)
+{
+    NetworkPacket np(PACKET_TYPE_NOTIFICATION,
+                     {
+                         {QStringLiteral("id"), id},
+                         {QStringLiteral("cancel"), id},
+                         {QStringLiteral("isCancel"), true},
+                     });
+    sendPacket(np);
+}
+
 #include "moc_sendnotificationsplugin.cpp"
 #include "sendnotificationsplugin.moc"

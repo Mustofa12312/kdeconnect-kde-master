@@ -43,6 +43,22 @@ class ReceiveNotificationsPlugin : Plugin() {
     }
 
     override fun onPacketReceived(np: NetworkPacket): Boolean {
+        // Handle notification cancel / prompt dismiss from desktop
+        if (np.has("cancel") || np.getBoolean("isCancel", false)) {
+            val cancelId = if (np.has("cancel")) np.getString("cancel") else np.getString("id", "")
+            val nm = context.getSystemService<NotificationManager>()
+            val intId = try { cancelId.toInt() } catch (e: Exception) { cancelId.hashCode() }
+            nm?.cancel("kdeconnectId:$cancelId", intId)
+
+            val dismissIntent = Intent(NotificationActionReceiver.ACTION_DISMISS_DYNAMIC_ISLAND).apply {
+                setPackage(context.packageName)
+                putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, cancelId)
+            }
+            context.sendBroadcast(dismissIntent)
+            Log.i("NotificationsPlugin", "Notification/prompt $cancelId dismissed by desktop signal")
+            return true
+        }
+
         if ("ticker" !in np || "appName" !in np || "id" !in np) {
             Log.e("NotificationsPlugin", "Received notification packet lacks properties")
             return true
